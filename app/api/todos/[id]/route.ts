@@ -7,8 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { todoDB, UpdateTodoInput } from '@/lib/db';
-import { isValidDateFormat } from '@/lib/timezone';
+import { todoDB, UpdateTodoInput, Todo } from '@/lib/db';
+import { isValidDateFormat, calculateNextDueDate, getSingaporeNow } from '@/lib/timezone';
 
 /**
  * GET /api/todos/[id]
@@ -44,6 +44,7 @@ export async function GET(
 /**
  * PUT /api/todos/[id]
  * Update todo
+ * PRP-03: Handles recurring todo completion with automatic next instance creation
  */
 export async function PUT(
   request: NextRequest,
@@ -60,6 +61,12 @@ export async function PUT(
 
   try {
     const body = await request.json();
+
+    // Get existing todo to check for recurrence
+    const existingTodo = todoDB.getById(session.userId, todoId);
+    if (!existingTodo) {
+      return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+    }
 
     // Validation
     if (body.title !== undefined) {
@@ -81,7 +88,19 @@ export async function PUT(
       );
     }
 
-    // Build update input
+    // PRP-03: Check if this is a completion of a recurring todo
+    const isCompletingRecurring = 
+      body.completed_at !== undefined && 
+      body.completed_at !== null && 
+      !existingTodo.completed_at && 
+      existingTodo.recurrence_pattern;
+
+    if (isCompletingRecurring) {
+      // Handle recurring todo completion - create next instance
+      return handleRecurringTodoCompletion(session.userId, existingTodo, body.completed_at);
+    }
+
+    // Regular update (non-recurring logic)
     const updateInput: UpdateTodoInput = {};
     if (body.title !== undefined) updateInput.title = body.title.trim();
     if (body.completed_at !== undefined) updateInput.completed_at = body.completed_at;
@@ -101,6 +120,52 @@ export async function PUT(
   } catch (error) {
     console.error('Failed to update todo:', error);
     return NextResponse.json({ error: 'Failed to update todo' }, { status: 500 });
+  }
+}
+
+/**
+ * PRP-03: Handle completion of a recurring todo
+ * Creates the next instance with all metadata inherited
+ */
+function handleRecurringTodoCompletion(
+  userId: number,
+  todo: Todo,
+  completedAt: string
+): NextResponse {
+  try {
+    // 1. Mark current instance as completed
+    const completedTodo = todoDB.update(userId, todo.id, {
+      completed_at: completedAt,
+    });
+
+    if (!completedTodo) {
+      throw new Error('Failed to mark todo as completed');
+    }
+
+    // 2. Calculate next due date
+    const nextDueDate = calculateNextDueDate(
+      todo.due_date,
+      todo.recurrence_pattern!
+    );
+
+    // 3. Create next instance with same properties
+    const nextTodo = todoDB.create(userId, {
+      title: todo.title,
+      due_date: nextDueDate,
+      priority: todo.priority || undefined,
+      recurrence_pattern: todo.recurrence_pattern || undefined,
+      reminder_minutes: todo.reminder_minutes || undefined,
+    });
+
+    // 4. Return both completed and next instance
+    return NextResponse.json({
+      completed_todo: completedTodo,
+      next_instance: nextTodo,
+      message: `Recurring todo completed! Next instance scheduled for ${nextDueDate}`,
+    });
+  } catch (error) {
+    console.error('Failed to handle recurring todo completion:', error);
+    throw error;
   }
 }
 

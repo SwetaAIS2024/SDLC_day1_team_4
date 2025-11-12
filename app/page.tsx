@@ -7,14 +7,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Todo } from '@/lib/db';
+import { Todo, RecurrencePattern } from '@/lib/db';
 import { formatSingaporeDate, getSingaporeNow } from '@/lib/timezone';
+import { RecurrenceSelector } from '@/components/RecurrenceSelector';
+import { RecurrenceIcon } from '@/components/RecurrenceIndicator';
 
 export default function TodoPage() {
   // State management
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [newTodoDueDate, setNewTodoDueDate] = useState('');
+  const [newRecurrencePattern, setNewRecurrencePattern] = useState<RecurrencePattern | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -64,7 +67,7 @@ export default function TodoPage() {
       created_at: getSingaporeNow().toISOString(),
       updated_at: getSingaporeNow().toISOString(),
       priority: null,
-      recurrence_pattern: null,
+      recurrence_pattern: newRecurrencePattern,
       reminder_minutes: null,
       last_notification_sent: null,
     };
@@ -73,6 +76,7 @@ export default function TodoPage() {
     setTodos((prev) => [optimisticTodo, ...prev]);
     setNewTodoTitle('');
     setNewTodoDueDate('');
+    setNewRecurrencePattern(null);
     setError(null);
 
     try {
@@ -82,6 +86,7 @@ export default function TodoPage() {
         body: JSON.stringify({
           title: newTodoTitle.trim(),
           due_date: newTodoDueDate || null,
+          recurrence_pattern: newRecurrencePattern,
         }),
       });
 
@@ -119,8 +124,23 @@ export default function TodoPage() {
 
       if (!res.ok) throw new Error('Failed to update todo');
 
-      const updatedTodo: Todo = await res.json();
-      setTodos((prev) => prev.map((t) => (t.id === todo.id ? updatedTodo : t)));
+      const responseData = await res.json();
+      
+      // Check if this was a recurring todo completion
+      if (responseData.next_instance) {
+        // Replace completed todo and add next instance
+        setTodos((prev) => {
+          const filtered = prev.map((t) => (t.id === todo.id ? responseData.completed_todo : t));
+          return [responseData.next_instance, ...filtered];
+        });
+        
+        // Show success message with next due date
+        const nextDueDate = formatSingaporeDate(responseData.next_instance.due_date);
+        alert(`✅ ${responseData.message}\n\nNext occurrence created with due date: ${nextDueDate}`);
+      } else {
+        // Regular todo - just update it
+        setTodos((prev) => prev.map((t) => (t.id === todo.id ? responseData : t)));
+      }
     } catch (err) {
       // Rollback on error
       setTodos((prev) =>
@@ -235,6 +255,10 @@ export default function TodoPage() {
           onChange={(e) => setNewTodoDueDate(e.target.value)}
           className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        <RecurrenceSelector
+          value={newRecurrencePattern}
+          onChange={setNewRecurrencePattern}
+        />
         <button
           type="submit"
           className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
@@ -295,6 +319,11 @@ export default function TodoPage() {
                   <div className="flex-1">
                     <p className={`${todo.completed_at ? 'line-through text-gray-500' : ''}`}>
                       {todo.title}
+                      {todo.recurrence_pattern && (
+                        <span className="ml-2">
+                          <RecurrenceIcon pattern={todo.recurrence_pattern} />
+                        </span>
+                      )}
                     </p>
                     {todo.due_date && (
                       <p className="text-sm text-gray-500">
