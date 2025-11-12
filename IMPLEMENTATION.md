@@ -1,69 +1,60 @@
-# Todo CRUD Operations - Implementation
+# Todo CRUD Operations - Implementation Complete
 
-This implementation follows **PRP-01: Todo CRUD Operations** specification.
+This codebase implements **PRP-01: Todo CRUD Operations** with all core functionality for creating, reading, updating, and deleting todos.
 
-## ✅ Implemented Features
+## 🎯 What's Been Implemented
 
-### Core CRUD Operations
-- ✅ Create todos with title and optional due date
-- ✅ Read/list all todos sorted by creation date (newest first)
-- ✅ Update todo title, due date, and completion status
-- ✅ Delete todos with confirmation
-- ✅ Singapore timezone handling for all date/time operations
-- ✅ Optimistic UI updates with rollback on error
+### ✅ Core Features
+- **Create todos** with title and optional due date
+- **Read all todos** for the authenticated user (sorted by newest first)
+- **Update todos** - title, completion status, and due dates
+- **Delete todos** with confirmation dialog
+- **Optimistic UI updates** with automatic rollback on errors
+- **Singapore timezone handling** for all date/time operations
+- **Input validation** (title length, required fields)
+- **Error handling** with user-friendly messages
 
-### Technical Implementation
-- ✅ Database: SQLite via better-sqlite3 (synchronous operations)
-- ✅ API Routes: RESTful endpoints following Next.js 16 patterns
-- ✅ Frontend: React 19 client component with state management
-- ✅ Validation: Client-side and server-side
-- ✅ Error Handling: Comprehensive error handling with user feedback
-
-## 📁 Project Structure
+### 📁 Project Structure
 
 ```
-SDLC_day1/
+/workspaces/SDLC_day1/
 ├── app/
 │   ├── api/
 │   │   └── todos/
-│   │       ├── route.ts           # POST, GET /api/todos
-│   │       └── [id]/
-│   │           └── route.ts       # GET, PUT, DELETE /api/todos/[id]
-│   ├── layout.tsx                 # Root layout
-│   ├── page.tsx                   # Main todo UI component
-│   └── globals.css                # Global styles with Tailwind
+│   │       ├── route.ts          # GET /api/todos, POST /api/todos
+│   │       └── [id]/route.ts     # PUT /api/todos/:id, DELETE /api/todos/:id
+│   ├── layout.tsx                # Root layout
+│   ├── page.tsx                  # Main todo UI with CRUD operations
+│   └── globals.css               # Tailwind CSS imports
 ├── lib/
-│   ├── db.ts                      # Database schema & CRUD operations
-│   ├── timezone.ts                # Singapore timezone utilities
-│   └── auth.ts                    # Session management (stub)
-├── package.json                   # Dependencies
-├── tsconfig.json                  # TypeScript configuration
-├── tailwind.config.js             # Tailwind CSS configuration
-├── next.config.js                 # Next.js configuration
-└── todos.db                       # SQLite database (auto-created)
+│   ├── db.ts                     # Database schema and CRUD operations
+│   ├── timezone.ts               # Singapore timezone utilities
+│   └── auth.ts                   # Session management (dev stub)
+├── package.json                  # Dependencies
+├── tsconfig.json                 # TypeScript configuration
+├── tailwind.config.js            # Tailwind CSS config
+├── postcss.config.js             # PostCSS with @tailwindcss/postcss
+├── next.config.js                # Next.js configuration
+└── .env.local                    # Environment variables
 ```
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 20+ installed
-- npm or yarn
+- Node.js 18+ installed
+- npm or yarn package manager
 
 ### Installation
 
-Dependencies are already installed. If you need to reinstall:
-
 ```bash
+# Install dependencies
 npm install
-```
 
-### Run Development Server
-
-```bash
+# Start development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+The app will be available at **http://localhost:3000**
 
 ### Build for Production
 
@@ -72,216 +63,342 @@ npm run build
 npm start
 ```
 
-## 🎯 API Endpoints
+## 🔧 Technical Implementation
 
-### Create Todo
+### Database (SQLite with better-sqlite3)
+
+**Location**: `lib/db.ts`
+
+- **Synchronous operations** (no async/await for DB queries)
+- **Tables**: `users`, `todos`
+- **Indexes**: `user_id`, `due_date`, `completed`
+- **Foreign keys** enabled with CASCADE delete
+
+**Schema**:
+```sql
+CREATE TABLE todos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  title TEXT NOT NULL CHECK(length(title) <= 500),
+  completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1)),
+  due_date TEXT,  -- ISO 8601 Singapore timezone
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 ```
+
+### API Routes (Next.js 16)
+
+**Pattern**:
+```typescript
+// All routes follow this structure
+export async function GET/POST/PUT/DELETE(request: NextRequest) {
+  const session = await getSession();
+  // Auto-create dev session if none exists
+  if (!session) {
+    session = await getOrCreateDevSession();
+  }
+  // ... handle request
+}
+```
+
+**Endpoints**:
+- `GET /api/todos` - List all todos
+- `POST /api/todos` - Create new todo
+- `PUT /api/todos/:id` - Update todo
+- `DELETE /api/todos/:id` - Delete todo
+
+### Singapore Timezone Handling
+
+**Location**: `lib/timezone.ts`
+
+**CRITICAL**: Always use `getSingaporeNow()` instead of `new Date()`
+
+```typescript
+import { getSingaporeNow, formatSingaporeDate, isPastDue } from '@/lib/timezone';
+
+// Get current time in Singapore
+const now = getSingaporeNow();
+
+// Format for display
+const displayDate = formatSingaporeDate(todo.due_date); // "Nov 15, 2025, 2:30 PM SGT"
+
+// Check if overdue
+if (isPastDue(todo.due_date)) {
+  // Show overdue indicator
+}
+```
+
+### Authentication (Development Stub)
+
+**Location**: `lib/auth.ts`
+
+- **JWT-based sessions** stored in HTTP-only cookies
+- **Auto-creates dev user** on first access
+- **7-day expiration**
+- **Ready for WebAuthn** upgrade (see PRP-11)
+
+```typescript
+// Current implementation (dev mode)
+export async function getOrCreateDevSession(): Promise<Session> {
+  // Auto-creates "dev-user" if none exists
+}
+```
+
+### UI Components (React 19)
+
+**Location**: `app/page.tsx`
+
+**Features**:
+- **Optimistic updates** - UI updates immediately, rolls back on error
+- **Form validation** - Title required, max 500 chars
+- **Error messages** - User-friendly notifications
+- **Loading states** - Skeleton screens during fetch
+- **Responsive design** - Mobile-friendly with Tailwind CSS
+
+**State Management**:
+```typescript
+const [todos, setTodos] = useState<Todo[]>([]);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState<string | null>(null);
+const [editingId, setEditingId] = useState<number | null>(null);
+```
+
+## 📝 Usage Examples
+
+### Creating a Todo
+
+```typescript
+// Via UI: Type title, optionally set due date, click "Add"
+// Via API:
 POST /api/todos
 Content-Type: application/json
 
-Body:
 {
-  "title": "Complete project proposal",
-  "due_date": "2025-11-15"  // Optional, YYYY-MM-DD
+  "title": "Review Q4 budget report",
+  "due_date": "2025-11-15T14:30:00+08:00"
 }
 
-Response: 201 Created
-```
-
-### List All Todos
-```
-GET /api/todos
-
-Response: 200 OK
+// Response: 201 Created
 {
-  "todos": [...]
+  "id": 1,
+  "title": "Review Q4 budget report",
+  "completed": false,
+  "due_date": "2025-11-15T14:30:00+08:00",
+  "created_at": "2025-11-12T10:00:00+08:00",
+  "updated_at": "2025-11-12T10:00:00+08:00"
 }
 ```
 
-### Get Single Todo
-```
-GET /api/todos/[id]
+### Updating a Todo
 
-Response: 200 OK
-```
-
-### Update Todo
-```
-PUT /api/todos/[id]
+```typescript
+// Via UI: Click "Edit", modify fields, click "Save"
+// Via API:
+PUT /api/todos/1
 Content-Type: application/json
 
-Body:
 {
-  "title": "Updated title",           // Optional
-  "completed_at": "2025-11-12...",    // Optional
-  "due_date": "2025-11-20"            // Optional
+  "title": "Review Q4 budget report (URGENT)",
+  "completed": true
 }
 
-Response: 200 OK
+// Response: 200 OK (updated todo)
 ```
 
-### Delete Todo
+### Deleting a Todo
+
+```typescript
+// Via UI: Click "Delete", confirm in dialog
+// Via API:
+DELETE /api/todos/1
+
+// Response: 204 No Content
 ```
-DELETE /api/todos/[id]
 
-Response: 200 OK
-{
-  "success": true,
-  "message": "Todo deleted successfully"
-}
-```
+## 🧪 Testing
 
-## 🔧 Key Implementation Details
+### Manual Testing Checklist
 
-### Singapore Timezone
-All date/time operations use Singapore timezone (`Asia/Singapore`):
-- `getSingaporeNow()` - Get current time in Singapore
-- `formatSingaporeDate()` - Format dates for display
-- NEVER use `new Date()` directly
+✅ **Create Todo**
+- [ ] Create todo with title only
+- [ ] Create todo with title and due date
+- [ ] Verify empty title is rejected
+- [ ] Verify 501+ character title is rejected
+- [ ] Verify todo appears immediately (optimistic update)
 
-### Database Operations
-- All operations are **synchronous** (better-sqlite3)
-- No async/await needed for DB calls
-- Prepared statements prevent SQL injection
-- Foreign key CASCADE on user deletion
+✅ **Read Todos**
+- [ ] Verify todos load on page load
+- [ ] Verify newest todos appear first
+- [ ] Verify empty state shows when no todos
+- [ ] Verify due dates display in Singapore timezone
 
-### Optimistic UI Updates
-1. User performs action (create/update/delete)
-2. UI updates immediately (optimistic)
-3. API call made to server
-4. On success: Replace with server data
-5. On error: Rollback and show error message
+✅ **Update Todo**
+- [ ] Edit todo title
+- [ ] Change due date
+- [ ] Remove due date
+- [ ] Toggle completion status
+- [ ] Cancel edit without saving
 
-### Validation
-- Client-side: Immediate feedback, prevent invalid input
-- Server-side: Enforced validation, database constraints
-- Title: 1-500 characters required
-- Due date: YYYY-MM-DD format or null
+✅ **Delete Todo**
+- [ ] Delete todo with confirmation
+- [ ] Cancel deletion
+- [ ] Verify todo disappears immediately
 
-## 🧪 Testing the Implementation
+✅ **Error Handling**
+- [ ] Simulate network error during create (rollback)
+- [ ] Simulate network error during update (rollback)
+- [ ] Simulate network error during delete (rollback)
 
-### Manual Testing
-
-1. **Create Todo**
-   - Enter title and click "Add"
-   - Verify todo appears immediately
-   - Check due date formatting
-
-2. **Toggle Completion**
-   - Click checkbox
-   - Verify strikethrough applied
-   - Click again to uncomplete
-
-3. **Edit Todo**
-   - Click "Edit" button
-   - Modify title/due date
-   - Click "Save" or "Cancel"
-
-4. **Delete Todo**
-   - Click "Delete" button
-   - Confirm deletion
-   - Verify todo removed
-
-5. **Error Handling**
-   - Try creating empty title
-   - Try title > 500 characters
-   - Verify error messages display
-
-### Database Verification
+### E2E Testing (Playwright)
 
 ```bash
-# Install SQLite CLI (if not installed)
-# Windows: choco install sqlite
-# Mac: brew install sqlite
+# Install Playwright
+npm install -D @playwright/test
 
-# Inspect database
-sqlite3 todos.db
-
-# View schema
-.schema
-
-# Query todos
-SELECT * FROM todos;
-
-# Exit
-.quit
+# Run tests (to be implemented in future)
+npx playwright test
 ```
 
-## 📋 Acceptance Criteria Status
+## 🔒 Security Considerations
 
-All 23 acceptance criteria from PRP-01 are implemented:
+### Current Implementation (Development)
+- Auto-creates dev user on first access
+- Session stored in HTTP-only cookie
+- SQL injection prevented via prepared statements
+- XSS prevented via React's automatic escaping
 
-### Functional (10/10) ✅
-- [x] AC-1: Create todo with title only
-- [x] AC-2: Create todo with title and due date
-- [x] AC-3: Due dates in YYYY-MM-DD format
-- [x] AC-4: View all todos sorted by created_at DESC
-- [x] AC-5: Toggle completion via checkbox
-- [x] AC-6: Completed todos show strikethrough
-- [x] AC-7: Edit todo title and due date
-- [x] AC-8: Delete with confirmation dialog
-- [x] AC-9: Singapore timezone usage
-- [x] AC-10: Optimistic UI updates
+### Production Readiness
+⚠️ **Replace auth stub with WebAuthn** (see PRP-11)
+- Implement passwordless authentication
+- Use biometric/security key authentication
+- Proper user registration flow
 
-### Technical (7/7) ✅
-- [x] AC-11: All routes require session (stub auth)
-- [x] AC-12: Database title length constraint
-- [x] AC-13: Foreign key CASCADE
-- [x] AC-14: Server validates all input
-- [x] AC-15: Client handles errors with rollback
-- [x] AC-16: Timestamps as ISO 8601 strings
-- [x] AC-17: Prepared statements
+## 🎨 UI/UX Features
 
-### User Experience (6/6) ✅
-- [x] AC-18: Form clears after submission
-- [x] AC-19: Error messages in red alert box
-- [x] AC-20: Loading state shown
-- [x] AC-21: Inline edit mode (no modal)
-- [x] AC-22: Cancel button discards changes
-- [x] AC-23: Empty state message
+### Optimistic Updates
+All CRUD operations update the UI immediately and rollback on error:
 
-## 🔮 Future Enhancements (Other PRPs)
+```typescript
+// Example: Delete with optimistic update
+const deleteTodo = async (id: number) => {
+  // 1. Update UI immediately
+  setTodos(prev => prev.filter(t => t.id !== id));
+  
+  try {
+    // 2. Call API
+    await fetch(`/api/todos/${id}`, { method: 'DELETE' });
+  } catch (err) {
+    // 3. Rollback on error
+    setTodos(prev => [...prev, originalTodo]);
+    setError('Failed to delete todo');
+  }
+};
+```
 
-The following features are planned for future PRPs:
-- **PRP-02**: Priority levels (high/medium/low)
-- **PRP-03**: Recurring todos (daily/weekly/monthly/yearly)
-- **PRP-04**: Reminders & notifications
-- **PRP-05**: Subtasks & progress tracking
-- **PRP-06**: Tag system
-- **PRP-07**: Template system
-- **PRP-08**: Search & filtering
-- **PRP-09**: Export & import
-- **PRP-10**: Calendar view
-- **PRP-11**: WebAuthn/Passkeys authentication
+### Visual Indicators
+- ✅ **Completed todos**: Strikethrough text, gray color
+- 🔴 **Overdue todos**: Red text, bold font
+- ⏰ **Due date display**: "Due: Nov 15, 2025, 2:30 PM SGT"
+- 🔄 **Loading state**: Spinner animation
+- ❌ **Error messages**: Red banner with dismiss button
 
-## 📝 Notes
+## 📊 Database Created On-Demand
 
-### Authentication Stub
-The current implementation uses a mock session (`dev-user` with `userId: 1`) in `lib/auth.ts`. Full WebAuthn implementation will be added in PRP-11.
+The SQLite database (`todos.db`) is created automatically when:
+1. The application first starts
+2. Any API endpoint is called
+3. The `lib/db.ts` module is imported
 
-### Database Initialization
-The database (`todos.db`) is created automatically on first run with:
-- `users` table with default dev-user (id: 1)
-- `todos` table with all fields (including future feature columns)
-- Proper indexes for performance
+**Location**: `/workspaces/SDLC_day1/todos.db`
 
-### Styling
-Basic Tailwind CSS styling is applied. More polished UI/UX can be added later.
+**Initial State**:
+- Users table with auto-created "dev-user"
+- Empty todos table
+- All indexes and foreign keys set up
 
-## 🐛 Known Issues
+## 🐛 Known Issues & Limitations
 
-None at this time. All core CRUD functionality is working as specified in PRP-01.
+1. **CSS Linting Warnings** - `@tailwind` directives show as unknown (cosmetic only)
+2. **No pagination** - All todos loaded at once (implement in future)
+3. **Dev auth only** - Must implement WebAuthn for production
+4. **No offline support** - Requires network connection
+5. **Browser compatibility** - Datetime-local input may vary across browsers
 
-## 📚 References
+## 🚀 Next Steps
 
-- **PRP-01**: `PRPs/01-todo-crud-operations.md`
-- **Copilot Instructions**: `.github/copilot-instructions.md`
-- **User Guide**: `USER_GUIDE.md` (future)
-- **Next.js 16 Docs**: https://nextjs.org/docs
-- **better-sqlite3 Docs**: https://github.com/WiseLibs/better-sqlite3
+To continue building the application, implement these features in order:
+
+1. **Priority System** (PRP-02) - Add high/medium/low priorities
+2. **Recurring Todos** (PRP-03) - Daily/weekly/monthly patterns
+3. **Reminders** (PRP-04) - Browser notifications
+4. **Subtasks** (PRP-05) - Checklist functionality
+5. **Tags** (PRP-06) - Color-coded labels
+6. **Templates** (PRP-07) - Reusable todo patterns
+7. **Search/Filter** (PRP-08) - Find todos by criteria
+8. **Export/Import** (PRP-09) - Backup and restore
+9. **Calendar View** (PRP-10) - Monthly calendar display
+10. **WebAuthn Auth** (PRP-11) - Production-ready authentication
+
+## 📚 Documentation References
+
+- **PRP File**: `PRPs/01-todo-crud-operations.md` (2100+ lines)
+- **User Guide**: `USER_GUIDE.md` (comprehensive documentation)
+- **AI Instructions**: `.github/copilot-instructions.md` (development patterns)
+
+## 💡 Development Tips
+
+### Adding New Features
+1. Read the corresponding PRP file
+2. Follow the patterns in `lib/db.ts` for database operations
+3. Use `getSingaporeNow()` for all timestamps
+4. Add API routes in `app/api/` directory
+5. Update UI in `app/page.tsx`
+
+### Common Patterns
+
+**Database Query**:
+```typescript
+// All queries are synchronous
+const todos = todoDB.getAll(userId);
+const todo = todoDB.getById(userId, todoId);
+todoDB.create(userId, { title: "New todo" });
+todoDB.update(userId, todoId, { completed: true });
+todoDB.delete(userId, todoId);
+```
+
+**API Route**:
+```typescript
+export async function POST(request: NextRequest) {
+  const session = await getSession();
+  const body = await request.json();
+  const { id } = await params; // params is a Promise in Next.js 16
+  // ... handle request
+}
+```
+
+**Timezone Handling**:
+```typescript
+import { getSingaporeNow } from '@/lib/timezone';
+const now = getSingaporeNow().toISO(); // Always use .toISO() not .toISOString()
+```
+
+## 🎉 Success!
+
+You now have a fully functional todo CRUD application with:
+- ✅ Clean architecture (Next.js 16 App Router)
+- ✅ Type-safe database operations (TypeScript + SQLite)
+- ✅ Singapore timezone support (Luxon)
+- ✅ Optimistic UI updates (React 19)
+- ✅ RESTful API (Next.js API routes)
+- ✅ Responsive design (Tailwind CSS 4)
+- ✅ Development authentication (JWT sessions)
+
+**Ready for production?** Implement WebAuthn authentication (PRP-11) and deploy!
 
 ---
 
 **Implementation Date**: November 12, 2025  
-**PRP Version**: 1.0  
+**PRP Reference**: 01-todo-crud-operations.md  
 **Status**: ✅ Complete

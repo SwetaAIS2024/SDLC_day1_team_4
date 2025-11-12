@@ -1,118 +1,87 @@
 # PRP-04: Reminders & Notifications
 
-**Feature**: Browser Notifications for Todo Reminders  
-**Version**: 1.0  
-**Last Updated**: November 12, 2025  
-**Status**: Core Feature  
-**Dependencies**: PRP-01 (Todo CRUD), PRP-02 (Priority & Tags), PRP-03 (Recurring Todos)  
-**Tech Stack**: Next.js 16 App Router, React 19, better-sqlite3, Browser Notifications API, Singapore Timezone
-
----
-
 ## Feature Overview
 
-The Reminders & Notifications feature provides a proactive notification system that alerts users about upcoming todos before their due dates. This feature helps users stay on top of deadlines through browser notifications with configurable timing windows, polling-based checks, and duplicate prevention mechanisms. All notifications respect Singapore timezone (`Asia/Singapore`) for accurate time-based calculations.
+The Reminders & Notifications feature provides users with timely browser notifications for upcoming todos, ensuring important tasks are never missed. This system operates entirely client-side using the Web Notifications API with backend support for notification timing calculations.
 
 **Key Capabilities:**
-- Browser-based notification system using Web Notifications API
-- Seven configurable reminder timings: 15 minutes, 30 minutes, 1 hour, 2 hours, 1 day, 2 days, 1 week before due date
-- Permission-based activation with user consent
-- Client-side polling mechanism (60-second intervals) to check for pending reminders
-- Server-side duplicate prevention via `last_notification_sent` timestamp tracking
-- Visual indicators showing reminder status on todo items
-- Singapore timezone-aware reminder calculations
-- Works in background tabs (browser-dependent)
-- Persistent notifications until user acknowledgment
-- Seamless integration with recurring todos (reminder offsets inherited)
+- **Browser Notifications**: Native desktop/mobile notifications that appear even when the app tab is in the background
+- **Flexible Timing Options**: Six preset intervals (15 minutes, 30 minutes, 1 hour, 2 hours, 1 day, 1 week before due date)
+- **Singapore Timezone Calculations**: All reminder time calculations use `Asia/Singapore` timezone for consistency
+- **Smart Polling**: Client-side periodic checks with configurable intervals (default: every 1 minute)
+- **Duplicate Prevention**: Server-side tracking of `last_notification_sent` prevents repeated notifications
+- **Permission Management**: Graceful handling of notification permissions with user prompts
+- **Recurring Todo Support**: Reminders automatically apply to next instances with same offset
 
-**Technical Approach:**
-- **Frontend**: React hook (`useNotifications.ts`) manages notification permissions, polling, and browser notification triggers
-- **Backend**: API endpoint (`/api/notifications/check`) calculates reminder windows and returns todos needing notifications
-- **Database**: `reminder_minutes` and `last_notification_sent` fields in `todos` table track reminder settings and notification history
-- **Polling**: Client-side 60-second interval checks against server API
-- **Timezone**: All due date and reminder calculations use `lib/timezone.ts` for Singapore timezone consistency
-- **Duplicate Prevention**: Server updates `last_notification_sent` timestamp after sending notification data to prevent repeated alerts
-
----
+**User Benefits:**
+- Never miss important deadlines
+- Reduce cognitive load of time tracking
+- Stay on schedule without constant app checking
+- Customize notification timing per task
 
 ## User Stories
 
-### Primary Users
+### Primary User Personas
 
-**Story 1: Enable Notification System**
-```
-As a busy professional
-I want to enable browser notifications for my todos
-So that I receive timely alerts even when I'm not actively viewing the app
-```
+**1. Busy Executive (Jennifer)**
+> "As an executive managing back-to-back meetings, I need reminder notifications 15 minutes before important tasks so I have time to prepare without constantly checking my todo list."
 
-**Story 2: Set Reminder Timing**
-```
-As a project manager with tight deadlines
-I want to set reminders 1 day before important tasks are due
-So that I have adequate time to prepare and complete work
-```
+**Goals:**
+- Timely alerts for imminent tasks
+- Quick context switching between meetings
+- Reduce time spent manually checking todos
+- Never miss critical pre-meeting preparation
 
-**Story 3: Short-Notice Reminders**
-```
-As someone managing quick tasks throughout the day
-I want to set 15-minute reminders for urgent todos
-So that I get timely alerts without being notified too far in advance
-```
+**Pain Points Without Feature:**
+- Misses meeting prep tasks while in other meetings
+- Has to set external calendar reminders duplicating todo list
+- Forgets to review agendas before calls
 
-**Story 4: Weekly Planning Reminders**
-```
-As a strategic planner
-I want to be reminded 1 week before major project milestones
-So that I can allocate resources and coordinate team members early
-```
+**2. Freelancer (Marcus)**
+> "As a freelancer juggling multiple client projects, I need 1-day advance reminders for deadlines so I can plan my workload and avoid last-minute rushes."
 
-**Story 5: Visual Reminder Indicators**
-```
-As a visual learner
-I want to see which todos have reminders set at a glance
-So that I know which items have proactive alerts configured
-```
+**Goals:**
+- Advance warning for upcoming deliverables
+- Better workload planning
+- Avoid emergency overtime
+- Maintain professional reputation
 
-**Story 6: Background Notifications**
-```
-As a multitasker working across multiple browser tabs
-I want to receive notifications even when the todo app is not the active tab
-So that I don't miss important deadlines while working on other tasks
-```
+**Pain Points Without Feature:**
+- Discovers deadlines too late for quality work
+- Poor work-life balance from unexpected rushes
+- Client dissatisfaction from missed timelines
 
----
+**3. Health-Conscious Professional (Sarah)**
+> "As someone managing daily medication and exercise routines, I need reliable reminders so I maintain healthy habits even during busy workdays."
+
+**Goals:**
+- Consistent habit maintenance
+- Time-specific health routines
+- Visible accountability
+- Integration with daily schedule
+
+**Pain Points Without Feature:**
+- Forgets medications when focused on work
+- Skips workouts without prompts
+- Irregular health routine adherence
+
+### User Needs
+
+- Timely, reliable notification delivery
+- Flexibility in reminder timing per task
+- Clear, actionable notification content
+- Minimal disruption to workflow
+- Easy permission management
+- Works across devices and browsers
 
 ## User Flow
 
-### Flow 1: Enabling Notifications
+### Primary Flow: Setting Up Reminder for New Todo
 
-```
-1. User visits main todo page (/)
-2. System checks browser notification permission status
-3. If permission is "default" (not yet requested):
-   - System displays "🔔 Enable Notifications" button (orange badge)
-4. If permission is "denied":
-   - System displays "🔔 Notifications Blocked" button (red badge, disabled)
-   - User must manually enable in browser settings
-5. If permission is "granted":
-   - System displays "🔔 Notifications On" button (green badge)
-   - System starts polling for pending reminders
-6. User clicks "🔔 Enable Notifications" button
-7. Browser displays native permission dialog: "Allow [domain] to send notifications?"
-8. User clicks "Allow"
-9. System updates button to "🔔 Notifications On" (green badge)
-10. System immediately starts polling /api/notifications/check every 60 seconds
-11. System stores permission status in localStorage (optional optimization)
-```
-
-### Flow 2: Setting a Reminder on New Todo
-
-```
-1. User creates a new todo with title
-2. User selects a due date from date picker (required for reminders)
-3. System enables "Reminder" dropdown (previously disabled)
-4. User clicks "Reminder" dropdown
+1. User clicks **"Add Todo"** button
+2. User enters todo title: "Client presentation"
+3. User sets **due date**: "2025-11-15 Friday 2:00 PM"
+4. User clicks **"Reminder"** dropdown
 5. System displays options:
    - None (default)
    - 15 minutes before
@@ -120,1317 +89,1484 @@ So that I don't miss important deadlines while working on other tasks
    - 1 hour before
    - 2 hours before
    - 1 day before
-   - 2 days before
    - 1 week before
-6. User selects "1 day before"
-7. System stores reminder_minutes = 1440 (24 hours * 60 minutes)
-8. User saves todo
-9. System sends POST /api/todos with reminder_minutes field
-10. Server validates reminder_minutes is within allowed values
-11. Server creates todo with reminder_minutes = 1440
-12. UI displays todo with "🔔 1d" badge next to due date
-13. System includes todo in polling checks
-```
+6. User selects **"1 hour before"**
+7. User clicks **"Add Todo"**
+8. **System saves `reminder_minutes = 60`**
+9. Todo displays with bell icon (🔔) indicating reminder is active
+10. System calculates notification time: Nov 15, 1:00 PM (due date - 1 hour)
 
-### Flow 3: Receiving a Notification
+### Secondary Flow: Receiving Browser Notification
 
-```
-1. System's polling interval (every 60 seconds) triggers check
-2. Client calls GET /api/notifications/check
-3. Server queries database for todos where:
-   - user_id matches session
-   - completed = false
-   - due_date IS NOT NULL
-   - reminder_minutes IS NOT NULL
-   - last_notification_sent IS NULL OR last_notification_sent < now
-4. Server calculates reminder threshold for each todo:
-   - reminder_time = due_date - reminder_minutes
-   - current_time = getSingaporeNow()
-5. Server finds todos where current_time >= reminder_time AND current_time < due_date
-6. Server returns array of todos needing notifications
-7. For each todo returned:
-   a. Client creates browser notification:
-      - Title: "Todo Reminder"
-      - Body: "{todo.title} is due at {formatted_due_date}"
-      - Icon: App icon (if configured)
-      - Badge: "🔔"
-      - Tag: `todo-${todo.id}` (for deduplication)
-      - requireInteraction: true (persists until acknowledged)
-   b. Client sends PATCH /api/notifications/{todo.id}/sent
-   c. Server updates last_notification_sent = getSingaporeNow()
-8. User sees browser notification pop-up (OS-specific styling)
-9. User clicks notification (optional)
-10. Browser focuses todo app tab
-11. System scrolls to relevant todo (optional enhancement)
-```
+**Precondition**: User has granted notification permissions
 
-### Flow 4: Editing Reminder Timing
+1. **[Background] Polling occurs every 1 minute**
+2. Current time reaches 1:00 PM (notification time)
+3. Client fetches `/api/notifications/check`
+4. Server finds todo "Client presentation" is due in 60 minutes
+5. Server checks `last_notification_sent` (NULL → not sent yet)
+6. Server updates `last_notification_sent = 2025-11-15T13:00:00+08:00`
+7. Server returns notification payload:
+   ```json
+   {
+     "notifications": [{
+       "todo_id": 42,
+       "title": "Client presentation",
+       "message": "Due in 1 hour (2:00 PM)",
+       "priority": "high"
+     }]
+   }
+   ```
+8. **Client displays browser notification**:
+   - Title: "🔔 Client presentation"
+   - Body: "Due in 1 hour (2:00 PM)"
+   - Icon: App icon
+   - Tag: "todo-42" (for deduplication)
+9. User sees notification on desktop/mobile
+10. User clicks notification → browser focuses todo app tab
+11. Todo app scrolls to and highlights "Client presentation"
 
-```
-1. User opens edit modal for existing todo with reminder
-2. System displays current reminder value in dropdown (e.g., "1 day before")
-3. User changes reminder to "2 hours before"
-4. System updates reminder_minutes = 120
-5. User clicks "Save"
-6. System sends PUT /api/todos/{id} with updated reminder_minutes
-7. Server validates new reminder_minutes value
-8. Server updates todo.reminder_minutes = 120
-9. Server sets last_notification_sent = NULL (reset notification tracking)
-10. UI updates badge to "🔔 2h"
-11. System recalculates reminder threshold in next polling cycle
-```
+### Tertiary Flow: Granting Notification Permissions
 
-### Flow 5: Removing a Reminder
+**First-Time User Experience**
 
-```
-1. User opens edit modal for todo with reminder
-2. User selects "None" from Reminder dropdown
-3. System sets reminder_minutes = null
-4. User clicks "Save"
-5. System sends PUT /api/todos/{id} with reminder_minutes = null
-6. Server updates todo.reminder_minutes = NULL
-7. Server sets last_notification_sent = NULL
-8. UI removes "🔔" badge from todo
-9. System excludes todo from future notification checks
-```
+1. User visits todo app for first time
+2. User attempts to set reminder on a todo
+3. **System checks**: `Notification.permission === 'default'`
+4. System displays **permission request dialog**:
+   - "Enable notifications to receive reminders"
+   - "Allow" button, "Not now" button
+5. User clicks **"Allow"**
+6. **Browser prompts**: "[app-domain] wants to send notifications"
+7. User clicks **"Allow"** in browser prompt
+8. **System receives**: `Notification.permission === 'granted'`
+9. Reminder dropdown becomes enabled
+10. User can now set reminders on todos
 
-### Flow 6: Recurring Todo Reminder Inheritance
+**Permission Denied Flow**
 
-```
-1. User creates recurring todo with due date, recurrence pattern, and reminder
-2. User marks recurring todo as complete
-3. System creates next instance:
-   - Calculates next due_date based on recurrence pattern
-   - Copies reminder_minutes value (e.g., 1440 for "1 day before")
-   - Sets last_notification_sent = NULL (new instance needs notification)
-4. New instance becomes eligible for notifications based on its due_date and reminder_minutes
-5. Polling system detects new instance when threshold is reached
-6. User receives notification for new instance at appropriate time
-```
+1. User clicks "Block" or "Deny" in browser prompt
+2. **System receives**: `Notification.permission === 'denied'`
+3. System shows **persistent banner**:
+   - "⚠️ Notifications blocked. Reminders won't work."
+   - "To enable, allow notifications in browser settings"
+   - Link to help documentation
+4. Reminder dropdown shows ⚠️ icon and tooltip: "Enable browser notifications first"
+5. User can still set reminders (stored in database) but won't receive notifications
 
----
+### Quaternary Flow: Updating Reminder on Existing Todo
+
+1. User locates todo with existing 1-hour reminder
+2. User clicks **Edit** button
+3. User opens **Reminder** dropdown
+4. User selects **"1 day before"** (changes from 1 hour)
+5. User clicks **"Save"**
+6. **System updates `reminder_minutes = 1440`** (24 hours)
+7. **System clears `last_notification_sent = NULL`** (reset notification state)
+8. Next polling cycle will use new timing
+9. Todo displays updated bell icon with "1d" label
+
+### Edge Flow: Removing Reminder
+
+1. User opens todo with active reminder
+2. User clicks **Edit** button
+3. User selects **"None"** from Reminder dropdown
+4. User clicks **"Save"**
+5. **System updates `reminder_minutes = NULL`**
+6. **System clears `last_notification_sent = NULL`**
+7. Bell icon disappears from todo
+8. No notifications will be sent for this todo
+
+### Edge Flow: Notification for Overdue Todo
+
+1. Todo is past due date (e.g., due Nov 14, current time Nov 15)
+2. Reminder was set for "1 hour before" (should have fired Nov 14 1:00 PM)
+3. **System checks**: `last_notification_sent` is NULL
+4. **System calculates**: Notification time was in past
+5. **System skips notification** (doesn't send late notifications)
+6. Todo shows as overdue in UI with red styling
+7. No notification fires for past-due reminders
 
 ## Technical Requirements
 
 ### Database Schema
 
-#### Updated `todos` Table
+The `todos` table includes reminder columns:
+
 ```sql
-CREATE TABLE IF NOT EXISTS todos (
+CREATE TABLE todos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  title TEXT NOT NULL CHECK(length(title) >= 1 AND length(title) <= 500),
-  completed BOOLEAN DEFAULT 0,
-  due_date TEXT, -- ISO 8601 string in Singapore timezone
-  priority TEXT CHECK(priority IN ('low', 'medium', 'high')),
+  title TEXT NOT NULL,
+  description TEXT,
+  priority TEXT DEFAULT 'medium' CHECK(priority IN ('high', 'medium', 'low')),
+  is_completed INTEGER DEFAULT 0,
+  due_date TEXT, -- ISO 8601 with timezone: 2025-11-15T14:00:00+08:00
   recurrence_pattern TEXT CHECK(recurrence_pattern IN ('daily', 'weekly', 'monthly', 'yearly')),
-  reminder_minutes INTEGER CHECK(reminder_minutes IN (15, 30, 60, 120, 1440, 2880, 10080)), -- NEW
-  last_notification_sent TEXT, -- ISO 8601 timestamp when notification was last sent -- NEW
+  reminder_minutes INTEGER, -- Minutes before due_date to send notification
+  last_notification_sent TEXT, -- ISO timestamp of when notification was last sent
   created_at TEXT DEFAULT (datetime('now')),
-  completed_at TEXT,
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Index for efficient notification queries
-CREATE INDEX IF NOT EXISTS idx_todos_notifications 
-ON todos(user_id, completed, due_date, reminder_minutes, last_notification_sent);
+CREATE INDEX idx_todos_reminders ON todos(user_id, due_date, reminder_minutes, last_notification_sent);
+CREATE INDEX idx_todos_notification_pending ON todos(user_id, is_completed, due_date) 
+  WHERE reminder_minutes IS NOT NULL AND last_notification_sent IS NULL;
 ```
 
-**Field Details:**
-- `reminder_minutes`: Enum of allowed values (15, 30, 60, 120, 1440, 2880, 10080) representing minutes before due date
-- `last_notification_sent`: Timestamp (ISO 8601) of when notification was last delivered; NULL if not yet sent or after reminder time reset
-
-### API Endpoints
-
-#### **GET /api/notifications/check**
-**Purpose**: Poll for todos that need notifications sent
-
-**Authentication**: Required (session)
-
-**Request**: None (uses session.userId)
-
-**Response** (200 OK):
-```typescript
-{
-  notifications: Array<{
-    id: number;
-    title: string;
-    due_date: string; // ISO 8601
-    reminder_minutes: number;
-  }>
-}
-```
-
-**Logic**:
-```typescript
-const now = getSingaporeNow();
-const todos = db.prepare(`
-  SELECT id, title, due_date, reminder_minutes
-  FROM todos
-  WHERE user_id = ?
-    AND completed = 0
-    AND due_date IS NOT NULL
-    AND reminder_minutes IS NOT NULL
-    AND (last_notification_sent IS NULL OR last_notification_sent < ?)
-`).all(userId, now.toISOString());
-
-// Filter todos where reminder time has arrived
-const notifications = todos.filter(todo => {
-  const dueDate = parseISO(todo.due_date);
-  const reminderTime = subMinutes(dueDate, todo.reminder_minutes);
-  return now >= reminderTime && now < dueDate;
-});
-
-return { notifications };
-```
-
-**Error Responses**:
-- 401: Not authenticated
-- 500: Database error
-
----
-
-#### **PATCH /api/notifications/{id}/sent**
-**Purpose**: Mark notification as sent to prevent duplicates
-
-**Authentication**: Required (session)
-
-**Request Params**:
-- `id`: Todo ID (number)
-
-**Request Body**: None
-
-**Response** (200 OK):
-```typescript
-{
-  success: true,
-  todo_id: number
-}
-```
-
-**Logic**:
-```typescript
-const now = getSingaporeNow();
-db.prepare(`
-  UPDATE todos
-  SET last_notification_sent = ?
-  WHERE id = ? AND user_id = ?
-`).run(now.toISOString(), id, userId);
-```
-
-**Error Responses**:
-- 401: Not authenticated
-- 404: Todo not found or does not belong to user
-- 500: Database error
-
----
-
-#### **POST /api/todos** (Updated)
-**Changes**: Accept `reminder_minutes` field
-
-**Request Body**:
-```typescript
-{
-  title: string; // 1-500 chars
-  due_date?: string; // ISO 8601, optional
-  priority?: 'low' | 'medium' | 'high';
-  recurrence_pattern?: 'daily' | 'weekly' | 'monthly' | 'yearly';
-  reminder_minutes?: 15 | 30 | 60 | 120 | 1440 | 2880 | 10080; // NEW
-  // ... other fields
-}
-```
-
-**Validation**:
-- If `reminder_minutes` is provided, `due_date` must also be provided
-- `reminder_minutes` must be one of: [15, 30, 60, 120, 1440, 2880, 10080]
-- Return 400 Bad Request if validation fails
-
----
-
-#### **PUT /api/todos/{id}** (Updated)
-**Changes**: Accept `reminder_minutes` field; reset `last_notification_sent` when reminder changes
-
-**Request Body**: Same as POST (all fields optional for update)
-
-**Logic**:
-```typescript
-// If reminder_minutes is being updated:
-if (body.reminder_minutes !== undefined) {
-  // Reset notification tracking
-  db.prepare(`
-    UPDATE todos
-    SET reminder_minutes = ?, last_notification_sent = NULL
-    WHERE id = ? AND user_id = ?
-  `).run(body.reminder_minutes || null, id, userId);
-}
-```
+**Key Fields:**
+- `reminder_minutes`: Integer offset before `due_date`. NULL = no reminder.
+  - 15 = 15 minutes before
+  - 60 = 1 hour before
+  - 1440 = 1 day before (24 * 60)
+  - 10080 = 1 week before (7 * 24 * 60)
+- `last_notification_sent`: ISO timestamp when notification was last sent. Used for deduplication.
 
 ### TypeScript Types
 
-#### **Notification Permission Status**
-```typescript
-type NotificationPermission = 'default' | 'granted' | 'denied';
-```
+Add to `lib/db.ts`:
 
-#### **Reminder Minutes Enum**
 ```typescript
-type ReminderMinutes = 15 | 30 | 60 | 120 | 1440 | 2880 | 10080 | null;
+export type ReminderMinutes = 15 | 30 | 60 | 120 | 1440 | 10080 | null;
 
-const REMINDER_OPTIONS: Array<{ label: string; value: ReminderMinutes }> = [
-  { label: 'None', value: null },
-  { label: '15 minutes before', value: 15 },
-  { label: '30 minutes before', value: 30 },
-  { label: '1 hour before', value: 60 },
-  { label: '2 hours before', value: 120 },
-  { label: '1 day before', value: 1440 },
-  { label: '2 days before', value: 2880 },
-  { label: '1 week before', value: 10080 },
-];
-```
-
-#### **Todo Type (Updated)**
-```typescript
-interface Todo {
+export interface Todo {
   id: number;
   user_id: number;
   title: string;
-  completed: boolean;
-  due_date: string | null; // ISO 8601
-  priority: 'low' | 'medium' | 'high' | null;
-  recurrence_pattern: 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
-  reminder_minutes: ReminderMinutes; // NEW
-  last_notification_sent: string | null; // ISO 8601 // NEW
+  description: string | null;
+  priority: Priority;
+  is_completed: number;
+  due_date: string | null;
+  recurrence_pattern: RecurrencePattern | null;
+  reminder_minutes: ReminderMinutes;
+  last_notification_sent: string | null;
   created_at: string;
-  completed_at: string | null;
+  updated_at: string;
 }
-```
 
-#### **Notification Payload**
-```typescript
-interface NotificationPayload {
-  id: number;
+// Reminder configuration
+export const REMINDER_CONFIG = {
+  15: {
+    label: '15 minutes before',
+    shortLabel: '15m',
+    minutes: 15,
+    description: 'Notify 15 minutes before due time'
+  },
+  30: {
+    label: '30 minutes before',
+    shortLabel: '30m',
+    minutes: 30,
+    description: 'Notify 30 minutes before due time'
+  },
+  60: {
+    label: '1 hour before',
+    shortLabel: '1h',
+    minutes: 60,
+    description: 'Notify 1 hour before due time'
+  },
+  120: {
+    label: '2 hours before',
+    shortLabel: '2h',
+    minutes: 120,
+    description: 'Notify 2 hours before due time'
+  },
+  1440: {
+    label: '1 day before',
+    shortLabel: '1d',
+    minutes: 1440,
+    description: 'Notify 1 day before due time'
+  },
+  10080: {
+    label: '1 week before',
+    shortLabel: '1w',
+    minutes: 10080,
+    description: 'Notify 1 week before due time'
+  }
+} as const;
+
+export interface NotificationPayload {
+  todo_id: number;
   title: string;
+  message: string;
+  priority: Priority;
   due_date: string;
-  reminder_minutes: number;
 }
 ```
 
----
+### Notification Time Calculation
+
+**Critical**: All calculations use Singapore timezone via `lib/timezone.ts`:
+
+```typescript
+// lib/timezone.ts
+
+import { zonedTimeToUtc, utcToZonedTime, format } from 'date-fns-tz';
+import { subMinutes, isBefore, isAfter } from 'date-fns';
+
+const SINGAPORE_TZ = 'Asia/Singapore';
+
+export function calculateNotificationTime(
+  dueDate: string,
+  reminderMinutes: number
+): Date {
+  // Parse due date in Singapore timezone
+  const dueDateObj = new Date(dueDate);
+  const sgDueDate = utcToZonedTime(dueDateObj, SINGAPORE_TZ);
+  
+  // Subtract reminder minutes
+  const notificationTime = subMinutes(sgDueDate, reminderMinutes);
+  
+  return notificationTime;
+}
+
+export function shouldSendNotification(
+  dueDate: string,
+  reminderMinutes: number,
+  lastNotificationSent: string | null
+): boolean {
+  const now = getSingaporeNow();
+  const notificationTime = calculateNotificationTime(dueDate, reminderMinutes);
+  
+  // Don't send if notification time hasn't arrived yet
+  if (isBefore(now, notificationTime)) {
+    return false;
+  }
+  
+  // Don't send if notification time is in the past (overdue)
+  const dueDateObj = new Date(dueDate);
+  if (isBefore(dueDateObj, now)) {
+    return false;
+  }
+  
+  // Don't send if already sent
+  if (lastNotificationSent) {
+    return false;
+  }
+  
+  return true;
+}
+
+export function formatReminderTime(dueDate: string, reminderMinutes: number): string {
+  const notificationTime = calculateNotificationTime(dueDate, reminderMinutes);
+  return format(notificationTime, 'MMM d, h:mm a', { timeZone: SINGAPORE_TZ });
+}
+```
+
+### API Endpoints
+
+#### 1. Check for Pending Notifications
+
+**Endpoint**: `GET /api/notifications/check`
+
+**Purpose**: Polled by client to fetch todos requiring notifications
+
+**Query Parameters**: None (uses session user_id)
+
+**Response** (200 OK):
+```json
+{
+  "notifications": [
+    {
+      "todo_id": 42,
+      "title": "Client presentation",
+      "message": "Due in 1 hour (2:00 PM)",
+      "priority": "high",
+      "due_date": "2025-11-15T14:00:00+08:00"
+    },
+    {
+      "todo_id": 58,
+      "title": "Submit report",
+      "message": "Due in 30 minutes (1:30 PM)",
+      "priority": "medium",
+      "due_date": "2025-11-15T13:30:00+08:00"
+    }
+  ],
+  "count": 2
+}
+```
+
+**Server Logic** (in `app/api/notifications/check/route.ts`):
+
+```typescript
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { todoDB } from '@/lib/db';
+import { getSingaporeNow, shouldSendNotification } from '@/lib/timezone';
+
+export async function GET(request: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+  
+  const now = getSingaporeNow();
+  
+  // Fetch todos with reminders that haven't been sent
+  const todos = todoDB.getPendingNotifications(session.userId);
+  
+  const notifications: NotificationPayload[] = [];
+  
+  for (const todo of todos) {
+    if (!todo.due_date || !todo.reminder_minutes) continue;
+    
+    const shouldSend = shouldSendNotification(
+      todo.due_date,
+      todo.reminder_minutes,
+      todo.last_notification_sent
+    );
+    
+    if (shouldSend) {
+      // Mark as sent
+      todoDB.updateNotificationSent(todo.id, now.toISOString());
+      
+      // Calculate time until due
+      const dueTime = new Date(todo.due_date);
+      const minutesUntilDue = Math.round((dueTime.getTime() - now.getTime()) / 60000);
+      
+      let timeMessage: string;
+      if (minutesUntilDue < 60) {
+        timeMessage = `Due in ${minutesUntilDue} minutes`;
+      } else if (minutesUntilDue < 1440) {
+        const hours = Math.round(minutesUntilDue / 60);
+        timeMessage = `Due in ${hours} hour${hours > 1 ? 's' : ''}`;
+      } else {
+        const days = Math.round(minutesUntilDue / 1440);
+        timeMessage = `Due in ${days} day${days > 1 ? 's' : ''}`;
+      }
+      
+      notifications.push({
+        todo_id: todo.id,
+        title: todo.title,
+        message: timeMessage,
+        priority: todo.priority,
+        due_date: todo.due_date
+      });
+    }
+  }
+  
+  return NextResponse.json({
+    notifications,
+    count: notifications.length
+  });
+}
+```
+
+#### 2. Create/Update Todo with Reminder
+
+**Endpoint**: `POST /api/todos` or `PUT /api/todos/[id]`
+
+**Request Body** (with reminder):
+```json
+{
+  "title": "Team meeting",
+  "due_date": "2025-11-15T10:00:00+08:00",
+  "reminder_minutes": 60
+}
+```
+
+**Response** (201 Created or 200 OK):
+```json
+{
+  "id": 42,
+  "title": "Team meeting",
+  "due_date": "2025-11-15T10:00:00+08:00",
+  "reminder_minutes": 60,
+  "last_notification_sent": null,
+  "created_at": "2025-11-14T15:00:00+08:00",
+  "updated_at": "2025-11-14T15:00:00+08:00"
+}
+```
+
+**Important**: When updating `reminder_minutes`, clear `last_notification_sent`:
+
+```typescript
+// In PUT /api/todos/[id]
+if ('reminder_minutes' in updates) {
+  updates.last_notification_sent = null; // Reset notification state
+}
+```
+
+### Database Operations
+
+Add to `lib/db.ts`:
+
+```typescript
+export const todoDB = {
+  // ... existing methods ...
+  
+  getPendingNotifications(userId: number): Todo[] {
+    const stmt = db.prepare(`
+      SELECT * FROM todos 
+      WHERE user_id = ? 
+        AND is_completed = 0
+        AND due_date IS NOT NULL
+        AND reminder_minutes IS NOT NULL
+        AND last_notification_sent IS NULL
+      ORDER BY due_date ASC
+    `);
+    return stmt.all(userId) as Todo[];
+  },
+  
+  updateNotificationSent(id: number, timestamp: string): boolean {
+    const stmt = db.prepare(`
+      UPDATE todos 
+      SET last_notification_sent = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `);
+    const result = stmt.run(timestamp, id);
+    return result.changes > 0;
+  },
+  
+  getWithReminders(userId: number): Todo[] {
+    const stmt = db.prepare(`
+      SELECT * FROM todos 
+      WHERE user_id = ? 
+        AND reminder_minutes IS NOT NULL
+      ORDER BY due_date ASC NULLS LAST
+    `);
+    return stmt.all(userId) as Todo[];
+  },
+  
+  clearNotificationSent(id: number): boolean {
+    const stmt = db.prepare(`
+      UPDATE todos 
+      SET last_notification_sent = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `);
+    const result = stmt.run(id);
+    return result.changes > 0;
+  }
+};
+```
 
 ## UI Components
 
-### Component 1: Notification Permission Button
+### Notification Permission Manager Hook
 
 ```tsx
-'use client';
+// lib/hooks/useNotifications.ts
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { NotificationPayload } from '@/lib/db';
 
-export default function NotificationButton() {
+export function useNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
-
+  const [isPolling, setIsPolling] = useState(false);
+  
   useEffect(() => {
+    // Check initial permission state
     if ('Notification' in window) {
       setPermission(Notification.permission);
     }
   }, []);
-
-  const requestPermission = async () => {
+  
+  const requestPermission = useCallback(async () => {
     if (!('Notification' in window)) {
       alert('This browser does not support notifications');
-      return;
+      return false;
     }
-
+    
+    if (Notification.permission === 'granted') {
+      return true;
+    }
+    
+    if (Notification.permission === 'denied') {
+      alert('Notifications are blocked. Enable them in browser settings.');
+      return false;
+    }
+    
     const result = await Notification.requestPermission();
     setPermission(result);
-  };
-
-  if (permission === 'granted') {
-    return (
-      <button
-        className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium"
-        disabled
-      >
-        🔔 Notifications On
-      </button>
-    );
-  }
-
-  if (permission === 'denied') {
-    return (
-      <button
-        className="px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium cursor-not-allowed"
-        disabled
-        title="Notifications blocked. Enable in browser settings."
-      >
-        🔔 Notifications Blocked
-      </button>
-    );
-  }
-
-  return (
-    <button
-      onClick={requestPermission}
-      className="px-4 py-2 bg-orange-100 text-orange-700 rounded-lg font-medium hover:bg-orange-200 transition"
-    >
-      🔔 Enable Notifications
-    </button>
-  );
-}
-```
-
----
-
-### Component 2: Notification Polling Hook
-
-```tsx
-// lib/hooks/useNotifications.ts
-'use client';
-
-import { useEffect, useCallback, useRef } from 'react';
-
-const POLL_INTERVAL = 60000; // 60 seconds
-
-interface NotificationPayload {
-  id: number;
-  title: string;
-  due_date: string;
-  reminder_minutes: number;
-}
-
-export function useNotifications(enabled: boolean) {
-  const notifiedIdsRef = useRef<Set<number>>(new Set());
-
-  const checkNotifications = useCallback(async () => {
-    if (!enabled || Notification.permission !== 'granted') {
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/notifications/check');
-      if (!response.ok) return;
-
-      const data = await response.json();
-      const notifications: NotificationPayload[] = data.notifications || [];
-
-      for (const notif of notifications) {
-        // Prevent duplicate notifications in same session
-        if (notifiedIdsRef.current.has(notif.id)) {
-          continue;
-        }
-
-        // Show browser notification
-        const dueDate = new Date(notif.due_date);
-        const formattedDate = dueDate.toLocaleString('en-SG', {
-          timeZone: 'Asia/Singapore',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-
-        new Notification('Todo Reminder', {
-          body: `${notif.title} is due at ${formattedDate}`,
-          icon: '/icon.png', // Optional: app icon
-          badge: '🔔',
-          tag: `todo-${notif.id}`, // Prevents duplicate notifications with same tag
-          requireInteraction: true, // Notification persists until user interacts
-        });
-
-        // Mark as sent on server
-        await fetch(`/api/notifications/${notif.id}/sent`, {
-          method: 'PATCH',
-        });
-
-        // Track in client session
-        notifiedIdsRef.current.add(notif.id);
-      }
-    } catch (error) {
-      console.error('Error checking notifications:', error);
-    }
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    // Check immediately on mount
-    checkNotifications();
-
-    // Set up polling interval
-    const intervalId = setInterval(checkNotifications, POLL_INTERVAL);
-
-    return () => clearInterval(intervalId);
-  }, [enabled, checkNotifications]);
-}
-```
-
-**Usage in Main Page:**
-```tsx
-'use client';
-
-import { useState, useEffect } from 'react';
-import { useNotifications } from '@/lib/hooks/useNotifications';
-
-export default function HomePage() {
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-
-  useEffect(() => {
-    if ('Notification' in window) {
-      setNotificationsEnabled(Notification.permission === 'granted');
-    }
+    return result === 'granted';
   }, []);
+  
+  const showNotification = useCallback((payload: NotificationPayload) => {
+    if (Notification.permission !== 'granted') return;
+    
+    const notification = new Notification(`🔔 ${payload.title}`, {
+      body: payload.message,
+      icon: '/icon.png',
+      tag: `todo-${payload.todo_id}`, // Prevent duplicates
+      requireInteraction: false,
+      silent: false
+    });
+    
+    notification.onclick = () => {
+      window.focus();
+      // Scroll to todo (implementation depends on UI structure)
+      const todoElement = document.querySelector(`[data-todo-id="${payload.todo_id}"]`);
+      todoElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      notification.close();
+    };
+    
+    // Auto-close after 10 seconds
+    setTimeout(() => notification.close(), 10000);
+  }, []);
+  
+  const startPolling = useCallback((intervalMs: number = 60000) => {
+    if (isPolling) return;
+    
+    setIsPolling(true);
+    
+    const poll = async () => {
+      try {
+        const response = await fetch('/api/notifications/check');
+        if (response.ok) {
+          const data = await response.json();
+          data.notifications.forEach((notif: NotificationPayload) => {
+            showNotification(notif);
+          });
+        }
+      } catch (error) {
+        console.error('Notification polling error:', error);
+      }
+    };
+    
+    // Poll immediately, then every interval
+    poll();
+    const intervalId = setInterval(poll, intervalMs);
+    
+    return () => {
+      clearInterval(intervalId);
+      setIsPolling(false);
+    };
+  }, [isPolling, showNotification]);
+  
+  return {
+    permission,
+    requestPermission,
+    showNotification,
+    startPolling,
+    isSupported: 'Notification' in window
+  };
+}
+```
 
-  // Start polling when notifications are enabled
-  useNotifications(notificationsEnabled);
+### Reminder Selector Component
 
+```tsx
+import { ReminderMinutes, REMINDER_CONFIG } from '@/lib/db';
+
+interface ReminderSelectorProps {
+  value: ReminderMinutes;
+  onChange: (minutes: ReminderMinutes) => void;
+  disabled?: boolean;
+  hasDueDate: boolean;
+  notificationsEnabled: boolean;
+}
+
+export function ReminderSelector({ 
+  value, 
+  onChange, 
+  disabled,
+  hasDueDate,
+  notificationsEnabled
+}: ReminderSelectorProps) {
+  const isDisabled = disabled || !hasDueDate;
+  
   return (
-    <div>
-      {/* Notification button updates notificationsEnabled state */}
-      {/* Todo list and other components */}
+    <div className="flex flex-col gap-2">
+      <label htmlFor="reminder" className="text-sm font-medium text-gray-700">
+        Reminder
+      </label>
+      
+      <select
+        id="reminder"
+        value={value ?? 'none'}
+        onChange={(e) => {
+          const val = e.target.value === 'none' ? null : parseInt(e.target.value) as ReminderMinutes;
+          onChange(val);
+        }}
+        disabled={isDisabled}
+        className="
+          rounded-md border border-gray-300 px-3 py-2 text-sm
+          focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+          disabled:bg-gray-100 disabled:cursor-not-allowed
+        "
+        aria-label="Select reminder time"
+      >
+        <option value="none">No reminder</option>
+        <option value="15">🔔 {REMINDER_CONFIG[15].label}</option>
+        <option value="30">🔔 {REMINDER_CONFIG[30].label}</option>
+        <option value="60">🔔 {REMINDER_CONFIG[60].label}</option>
+        <option value="120">🔔 {REMINDER_CONFIG[120].label}</option>
+        <option value="1440">🔔 {REMINDER_CONFIG[1440].label}</option>
+        <option value="10080">🔔 {REMINDER_CONFIG[10080].label}</option>
+      </select>
+      
+      {!hasDueDate && (
+        <p className="text-xs text-amber-600">
+          ⚠️ Set a due date to enable reminders
+        </p>
+      )}
+      
+      {hasDueDate && !notificationsEnabled && (
+        <p className="text-xs text-amber-600">
+          ⚠️ Enable browser notifications to receive reminders
+        </p>
+      )}
+      
+      {value && hasDueDate && (
+        <p className="text-xs text-gray-500">
+          {REMINDER_CONFIG[value].description}
+        </p>
+      )}
     </div>
   );
 }
 ```
 
----
-
-### Component 3: Reminder Badge Display
+### Reminder Badge Component
 
 ```tsx
+import { ReminderMinutes, REMINDER_CONFIG } from '@/lib/db';
+
 interface ReminderBadgeProps {
-  reminderMinutes: number | null;
+  reminderMinutes: ReminderMinutes;
 }
 
 export function ReminderBadge({ reminderMinutes }: ReminderBadgeProps) {
   if (!reminderMinutes) return null;
-
-  const getReminderLabel = (minutes: number): string => {
-    if (minutes === 15) return '15m';
-    if (minutes === 30) return '30m';
-    if (minutes === 60) return '1h';
-    if (minutes === 120) return '2h';
-    if (minutes === 1440) return '1d';
-    if (minutes === 2880) return '2d';
-    if (minutes === 10080) return '1w';
-    return `${minutes}m`;
-  };
-
+  
+  const config = REMINDER_CONFIG[reminderMinutes];
+  
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-      🔔 {getReminderLabel(reminderMinutes)}
+    <span 
+      className="
+        inline-flex items-center gap-1 rounded-full border
+        bg-purple-50 text-purple-700 border-purple-200
+        px-2 py-0.5 text-xs font-medium
+      "
+      aria-label={`Reminder: ${config.label}`}
+      title={config.description}
+    >
+      <span>🔔</span>
+      <span>{config.shortLabel}</span>
     </span>
   );
 }
 ```
 
-**Usage in Todo Item:**
-```tsx
-<div className="flex items-center gap-2">
-  <span className="text-sm text-gray-600">
-    Due: {formatSingaporeDate(todo.due_date)}
-  </span>
-  <ReminderBadge reminderMinutes={todo.reminder_minutes} />
-</div>
-```
-
----
-
-### Component 4: Reminder Dropdown in Todo Form
+### Notification Permission Banner
 
 ```tsx
-interface ReminderSelectProps {
-  value: ReminderMinutes;
-  onChange: (value: ReminderMinutes) => void;
-  disabled?: boolean; // Disabled when no due date set
-}
+import { useNotifications } from '@/lib/hooks/useNotifications';
 
-export function ReminderSelect({ value, onChange, disabled }: ReminderSelectProps) {
+export function NotificationBanner() {
+  const { permission, requestPermission, isSupported } = useNotifications();
+  const [dismissed, setDismissed] = useState(false);
+  
+  if (!isSupported || permission === 'granted' || dismissed) {
+    return null;
+  }
+  
+  if (permission === 'denied') {
+    return (
+      <div className="bg-amber-50 border-l-4 border-amber-400 p-4">
+        <div className="flex items-start">
+          <div className="flex-shrink-0">
+            <span className="text-2xl">⚠️</span>
+          </div>
+          <div className="ml-3 flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              Notifications Blocked
+            </p>
+            <p className="mt-1 text-sm text-amber-700">
+              Reminders won't work. Enable notifications in your browser settings.
+            </p>
+            <a 
+              href="https://support.google.com/chrome/answer/3220216"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 text-sm text-amber-800 underline hover:text-amber-900"
+            >
+              Learn how →
+            </a>
+          </div>
+          <button
+            onClick={() => setDismissed(true)}
+            className="ml-3 text-amber-500 hover:text-amber-700"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-gray-700">
-        Reminder
-        {disabled && <span className="text-gray-400 ml-1">(requires due date)</span>}
-      </label>
-      <select
-        value={value ?? ''}
-        onChange={(e) => {
-          const val = e.target.value === '' ? null : Number(e.target.value);
-          onChange(val as ReminderMinutes);
-        }}
-        disabled={disabled}
-        className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-      >
-        <option value="">None</option>
-        <option value="15">15 minutes before</option>
-        <option value="30">30 minutes before</option>
-        <option value="60">1 hour before</option>
-        <option value="120">2 hours before</option>
-        <option value="1440">1 day before</option>
-        <option value="2880">2 days before</option>
-        <option value="10080">1 week before</option>
-      </select>
+    <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+      <div className="flex items-start">
+        <div className="flex-shrink-0">
+          <span className="text-2xl">🔔</span>
+        </div>
+        <div className="ml-3 flex-1">
+          <p className="text-sm font-medium text-blue-800">
+            Enable Notifications
+          </p>
+          <p className="mt-1 text-sm text-blue-700">
+            Get reminders for your todos even when the app is in the background.
+          </p>
+        </div>
+        <div className="ml-3 flex gap-2">
+          <button
+            onClick={requestPermission}
+            className="
+              px-3 py-1 bg-blue-600 text-white text-sm rounded-md
+              hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500
+            "
+          >
+            Enable
+          </button>
+          <button
+            onClick={() => setDismissed(true)}
+            className="px-3 py-1 text-blue-700 text-sm hover:text-blue-900"
+          >
+            Not now
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 ```
 
-**Usage in Todo Form:**
+### Integration in Main Todo Component
+
 ```tsx
-const [dueDate, setDueDate] = useState<string | null>(null);
-const [reminderMinutes, setReminderMinutes] = useState<ReminderMinutes>(null);
+// In app/page.tsx
 
-<DatePicker value={dueDate} onChange={setDueDate} />
-<ReminderSelect
-  value={reminderMinutes}
-  onChange={setReminderMinutes}
-  disabled={!dueDate} // Disable if no due date
-/>
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Todo, ReminderMinutes } from '@/lib/db';
+import { useNotifications } from '@/lib/hooks/useNotifications';
+import { ReminderSelector } from '@/components/ReminderSelector';
+import { ReminderBadge } from '@/components/ReminderBadge';
+import { NotificationBanner } from '@/components/NotificationBanner';
+
+export default function HomePage() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const { permission, startPolling } = useNotifications();
+  
+  // Start polling for notifications
+  useEffect(() => {
+    if (permission === 'granted') {
+      const cleanup = startPolling(60000); // Poll every 60 seconds
+      return cleanup;
+    }
+  }, [permission, startPolling]);
+  
+  const [newTodo, setNewTodo] = useState({
+    title: '',
+    due_date: '',
+    reminder_minutes: null as ReminderMinutes
+  });
+  
+  const handleCreateTodo = async () => {
+    const response = await fetch('/api/todos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTodo)
+    });
+    
+    if (response.ok) {
+      const created = await response.json();
+      setTodos(prev => [created, ...prev]);
+      setNewTodo({ title: '', due_date: '', reminder_minutes: null });
+    }
+  };
+  
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <NotificationBanner />
+      
+      <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <h2 className="text-2xl font-bold mb-4">Add New Todo</h2>
+        
+        <input
+          type="text"
+          placeholder="Todo title"
+          value={newTodo.title}
+          onChange={(e) => setNewTodo(prev => ({ ...prev, title: e.target.value }))}
+          className="w-full px-3 py-2 border rounded-md mb-4"
+        />
+        
+        <input
+          type="datetime-local"
+          value={newTodo.due_date}
+          onChange={(e) => setNewTodo(prev => ({ ...prev, due_date: e.target.value }))}
+          className="w-full px-3 py-2 border rounded-md mb-4"
+        />
+        
+        <ReminderSelector
+          value={newTodo.reminder_minutes}
+          onChange={(minutes) => setNewTodo(prev => ({ ...prev, reminder_minutes: minutes }))}
+          hasDueDate={!!newTodo.due_date}
+          notificationsEnabled={permission === 'granted'}
+        />
+        
+        <button
+          onClick={handleCreateTodo}
+          disabled={!newTodo.title}
+          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          Add Todo
+        </button>
+      </div>
+      
+      <div className="space-y-4">
+        {todos.map(todo => (
+          <div key={todo.id} className="bg-white rounded-lg shadow p-4">
+            <h3 className="text-lg font-semibold">{todo.title}</h3>
+            <div className="mt-2 flex gap-2">
+              {todo.reminder_minutes && (
+                <ReminderBadge reminderMinutes={todo.reminder_minutes} />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 ```
-
----
 
 ## Edge Cases
 
-### Edge Case 1: Permission Denied After Initial Grant
-**Scenario**: User grants permission, then later revokes it in browser settings
+### 1. Notification Permission Denied Mid-Session
 
-**Handling**:
-- Polling continues but notifications fail silently
-- Check `Notification.permission` before each notification attempt
-- Display "🔔 Notifications Blocked" status in UI if permission changes to "denied"
-- Provide instructions to re-enable in browser settings
+**Scenario**: User revokes notification permission after setting up reminders
 
----
+**Expected Behavior**:
+- Reminders remain in database (`reminder_minutes` preserved)
+- Polling continues but notifications don't display
+- Banner appears: "Notifications blocked"
+- When permission re-granted, notifications resume
+- No data loss
 
-### Edge Case 2: Multiple Browser Tabs Open
-**Scenario**: User has multiple tabs of the app open, each with polling active
+### 2. Multiple Todos with Same Notification Time
 
-**Handling**:
-- Each tab polls independently (not coordinated)
-- Server ensures `last_notification_sent` is updated atomically
-- Browser's notification tag (`todo-${id}`) prevents duplicate visual notifications
-- First tab to mark as sent wins; other tabs' requests are no-ops
-- **Consideration**: Could use SharedWorker or BroadcastChannel for tab coordination (out of scope for v1)
+**Scenario**: Three todos all due at 2:00 PM with 1-hour reminders
 
----
+**Expected Behavior**:
+- All three notifications fire at 1:00 PM
+- Each displays as separate browser notification
+- Browser may group them (OS-dependent)
+- All marked as sent in database
+- Each clickable to its respective todo
 
-### Edge Case 3: Past Due Todos
-**Scenario**: Reminder time arrives, but user never opens the app until after due date
+### 3. Completing Todo Before Notification Fires
 
-**Handling**:
-- Server filter: `now >= reminderTime && now < dueDate`
-- Todos past their due date are excluded from notifications
-- User sees overdue todos in UI (red date styling) but no notification sent
-- Rationale: Notification is meaningless after due date has passed
+**Scenario**: Todo due at 2:00 PM with 1-hour reminder, completed at 12:30 PM
 
----
+**Expected Behavior**:
+- Polling skips completed todos (`is_completed = 1`)
+- No notification sent
+- `last_notification_sent` remains NULL
+- Avoids notifications for already-completed tasks
 
-### Edge Case 4: Clock Skew Between Client and Server
-**Scenario**: Client's system clock is significantly different from server's Singapore time
+### 4. Changing Due Date After Setting Reminder
 
-**Handling**:
-- All calculations use server-side Singapore timezone (`lib/timezone.ts`)
-- Client only displays notifications, does not calculate reminder windows
-- Polling frequency (60 seconds) provides adequate buffer for minor skew
-- Major skew (hours) does not affect correctness, only notification timing precision
+**Scenario**: Todo due Nov 15 2:00 PM, reminder set for 1 hour before. User changes due date to Nov 16 2:00 PM.
 
----
+**Expected Behavior**:
+- `due_date` updates to Nov 16 2:00 PM
+- `reminder_minutes` remains 60 (1 hour)
+- `last_notification_sent` is **cleared to NULL** (reset notification state)
+- New notification time: Nov 16 1:00 PM
+- Old notification time (Nov 15 1:00 PM) is forgotten
 
-### Edge Case 5: Changing Due Date After Notification Sent
-**Scenario**: User receives notification, then changes due date to later time
+**Implementation**:
+```typescript
+// In PUT /api/todos/[id]
+if ('due_date' in updates) {
+  updates.last_notification_sent = null; // Reset notification state
+}
+```
 
-**Handling**:
-- PUT `/api/todos/{id}` resets `last_notification_sent` to NULL when due_date changes
-- New notification will be sent based on new due_date and reminder_minutes
-- User may receive duplicate notification if they extend due date significantly
-- **Mitigation**: UI could warn "Changing due date will reset reminder"
+### 5. Browser Tab Closed During Notification Time
 
----
+**Scenario**: Notification should fire at 1:00 PM but user closed browser at 12:55 PM
 
-### Edge Case 6: Very Short Reminder Windows
-**Scenario**: User sets "15 minutes before" on a todo due in 10 minutes
+**Expected Behavior**:
+- No notification fires (app not running)
+- When user reopens app at 1:05 PM, polling checks pending notifications
+- Server sees notification time (1:00 PM) is in past but todo not yet due
+- **Server skips sending** (doesn't send late notifications)
+- `last_notification_sent` remains NULL
+- User sees todo in normal UI with bell icon
 
-**Handling**:
-- Server calculates reminder_time = due_date - 15 minutes
-- If current_time already past reminder_time, notification sent immediately on next poll
-- Maximum delay: 60 seconds (poll interval)
-- User receives notification even if reminder window is in the past
-- **Note**: This is acceptable UX; user gets notification ASAP
+**Rationale**: Late notifications can be confusing. User sees todo in UI anyway.
 
----
+### 6. Recurring Todo with Reminder
 
-### Edge Case 7: Browser Does Not Support Notifications
-**Scenario**: User accesses app in browser/environment without Notification API
+**Scenario**: Daily recurring todo with 1-hour reminder
 
-**Handling**:
-- Check `if (!('Notification' in window))` before rendering button
-- Display message: "Your browser does not support notifications"
-- Reminder functionality still works (data stored in DB) for when user switches browsers
-- Export/import preserves reminder settings
+**Expected Behavior**:
+- When completing Nov 15 instance, next instance (Nov 16) inherits `reminder_minutes = 60`
+- Next instance has `last_notification_sent = NULL` (fresh notification state)
+- Nov 16 notification fires at calculated time
+- Each instance gets its own notification
 
----
+**Implementation** (in next instance creation):
+```typescript
+const newTodoId = todoDB.create({
+  // ... other fields ...
+  reminder_minutes: todo.reminder_minutes, // Inherit reminder
+  last_notification_sent: null // Fresh notification state
+});
+```
 
-### Edge Case 8: User Never Grants Permission
-**Scenario**: User dismisses permission dialog or ignores it
+### 7. Notification Time in the Past (Overdue Setup)
 
-**Handling**:
-- Button remains "🔔 Enable Notifications" (orange)
-- No polling occurs (`notificationsEnabled` stays false)
-- Reminders still configurable in UI (data persists)
-- User can click button again to re-trigger permission request
-- No error messages; non-intrusive UX
+**Scenario**: User creates todo on Nov 15 at 2:00 PM with due date Nov 15 at 3:00 PM and reminder "1 day before"
 
----
+**Expected Behavior**:
+- Todo is created successfully
+- Notification time would be Nov 14 at 3:00 PM (in past)
+- Polling checks: `shouldSendNotification()` returns false (notification time passed)
+- No notification fires
+- User sees todo normally in UI with bell icon
+- When due date arrives, todo shows as due (no notification)
 
-### Edge Case 9: Recurring Todo Completion Near Reminder Time
-**Scenario**: User completes recurring todo minutes before its reminder is due
+### 8. Rapid Reminder Changes
 
-**Handling**:
-- Completion flow creates new instance with reset `last_notification_sent = NULL`
-- Old instance marked completed; notification no longer sent (completed filter)
-- New instance's reminder calculated from its new due_date
-- No notification sent for the just-completed instance
-- User only receives notification for the new future instance
+**Scenario**: User changes reminder from 1 hour → 1 day → 30 minutes within 1 minute
 
----
+**Expected Behavior**:
+- Each update clears `last_notification_sent = NULL`
+- Final state: `reminder_minutes = 30`, `last_notification_sent = NULL`
+- Next polling cycle uses 30-minute timing
+- No duplicate notifications from previous settings
 
-### Edge Case 10: Network Failure During Polling
-**Scenario**: Polling request fails due to network issues or server downtime
+### 9. Daylight Saving Time (DST) Edge Case
 
-**Handling**:
-- `try/catch` in `useNotifications` hook silently logs error
-- Polling continues; next attempt in 60 seconds
-- No user-facing error message (would be intrusive)
-- Notifications resume automatically when connectivity restored
-- **Trade-off**: User may miss notifications during extended outages
+**Scenario**: Notification time crosses DST boundary (theoretical for Singapore)
 
----
+**Expected Behavior**:
+- Singapore doesn't observe DST, so non-issue for this app
+- If app expanded to other timezones, `date-fns-tz` handles DST automatically
+- Calculations always use `Asia/Singapore` timezone consistently
+
+### 10. Browser Notification Queue Full
+
+**Scenario**: User has 20+ notifications pending and browser limits queue
+
+**Expected Behavior**:
+- Browser-dependent behavior (Chrome allows ~3 visible at once)
+- Older notifications may auto-dismiss
+- All marked as sent in database (no re-sending)
+- User can see missed notifications in todo list (bell icons on overdue todos)
+
+### 11. Polling Fails Due to Network Error
+
+**Scenario**: Network disconnection during polling interval
+
+**Expected Behavior**:
+- Polling catches error silently (logs to console)
+- Doesn't mark notifications as sent (no database update)
+- Next successful poll will retry sending
+- No notification loss due to transient failures
+
+**Implementation**:
+```typescript
+try {
+  const response = await fetch('/api/notifications/check');
+  // ... handle success
+} catch (error) {
+  console.error('Notification polling error:', error);
+  // Don't throw - silent failure, retry next interval
+}
+```
+
+### 12. Notification for Todo Without Title
+
+**Scenario**: Edge case where todo has empty/null title
+
+**Expected Behavior**:
+- Notification displays with fallback: "Untitled todo"
+- Body still shows timing: "Due in 1 hour"
+- User can click to navigate to todo
+- Prevents blank notifications
 
 ## Acceptance Criteria
 
 ### Functional Requirements
 
-✅ **FR-1**: User can enable browser notifications via button click  
-- Button states: "Enable Notifications" (orange), "Notifications On" (green), "Notifications Blocked" (red)
-- Permission request triggers browser's native dialog
-- Button state persists across page reloads
+✅ **AC-1**: User can set reminder when creating todo with due date
+- Reminder dropdown visible and enabled when due date is set
+- Six timing options available (15m, 30m, 1h, 2h, 1d, 1w)
+- Selected reminder saved to database
 
-✅ **FR-2**: User can set reminder timing on todos with due dates  
-- Dropdown offers 7 options + "None"
-- Dropdown disabled if no due date set
-- Reminder persists on todo update/refresh
+✅ **AC-2**: User can change reminder on existing todo
+- Reminder can be updated via edit dialog
+- Changing reminder clears `last_notification_sent`
+- New reminder timing takes effect immediately
 
-✅ **FR-3**: User receives browser notification when reminder time arrives  
-- Notification displays todo title and formatted due date
-- Notification persists until user acknowledges (requireInteraction)
-- Notification opens app when clicked (optional enhancement)
+✅ **AC-3**: User can remove reminder from todo
+- Setting reminder to "None" clears `reminder_minutes`
+- Clears `last_notification_sent`
+- No notifications fire after removal
 
-✅ **FR-4**: System prevents duplicate notifications for same reminder  
-- `last_notification_sent` timestamp updated after notification
-- Multiple tabs do not send duplicate notifications for same todo
-- Same todo does not notify twice in same session
+✅ **AC-4**: Reminders require due date
+- Reminder dropdown disabled when no due date set
+- Clear message: "Set a due date to enable reminders"
+- Cannot save todo with reminder but no due date
 
-✅ **FR-5**: Reminder badge displays on todos with reminders set  
-- Badge shows abbreviated timing: "15m", "1h", "1d", "1w", etc.
-- Badge visible in collapsed and expanded todo views
-- Badge removed when reminder set to "None"
+✅ **AC-5**: Browser notification appears at correct time
+- Notification fires when current time >= (due date - reminder offset)
+- Timing accurate to within 1 minute (polling interval)
+- Uses Singapore timezone for all calculations
 
-✅ **FR-6**: System polls for pending reminders every 60 seconds  
-- Polling only active when notifications enabled
-- Polling continues in background tabs (browser-dependent)
-- Polling stops when user navigates away or closes tab
+✅ **AC-6**: Notification displays correct content
+- Title: "🔔 [Todo title]"
+- Body: "Due in [time remaining]"
+- Includes priority (high priority notifications more prominent)
+- Clickable to focus app and scroll to todo
 
-✅ **FR-7**: Reminder calculations respect Singapore timezone  
-- All due dates and reminder times calculated in `Asia/Singapore`
-- No timezone offset bugs from client's local timezone
-- Holiday calculations (if integrated) use Singapore holidays
+✅ **AC-7**: Notifications don't duplicate
+- `last_notification_sent` prevents re-sending
+- Browser notification `tag` prevents duplicates in queue
+- Single notification per todo per reminder setting
 
-✅ **FR-8**: Recurring todos inherit reminder settings  
-- New instance created with same `reminder_minutes` value
-- New instance has `last_notification_sent = NULL`
-- New instance becomes eligible for notification based on its due date
+✅ **AC-8**: Notification permission is requested gracefully
+- Banner prompts user to enable on first visit
+- Browser native permission dialog appears
+- Denied state shows help message
+- Permission state persists across sessions
+
+✅ **AC-9**: Reminders work with recurring todos
+- Reminder setting inherited to next instance
+- Each instance gets its own notification
+- `last_notification_sent` resets for new instances
+
+✅ **AC-10**: Overdue todos don't send late notifications
+- Notifications only fire if current time < due date
+- Past-due todos skip notification logic
+- No confusing "late" notifications
+
+✅ **AC-11**: Completed todos don't send notifications
+- Polling filters out `is_completed = 1` todos
+- No notifications for already-done tasks
+- Completing before notification time prevents sending
+
+✅ **AC-12**: Todos display reminder badge
+- Bell icon (🔔) visible on todos with reminders
+- Badge shows reminder timing (15m, 1h, 1d, etc.)
+- Badge has descriptive tooltip
 
 ### Non-Functional Requirements
 
-✅ **NFR-1**: Notification check API responds within 500ms  
-- Database query optimized with index on notification-related columns
-- Filter logic runs in memory on server (not database)
+✅ **AC-13**: Polling is efficient
+- Polling interval: 60 seconds (configurable)
+- API response time < 200ms for check endpoint
+- Minimal battery/resource impact
 
-✅ **NFR-2**: Polling does not degrade app performance  
-- 60-second interval ensures minimal CPU/network usage
-- Polling pauses when tab not visible (Page Visibility API, optional)
-- No memory leaks from interval cleanup on unmount
+✅ **AC-14**: Notification time calculation is accurate
+- Uses Singapore timezone consistently
+- Handles edge cases (end of month, leap year)
+- `date-fns-tz` library for reliability
 
-✅ **NFR-3**: System handles up to 1000 todos with reminders per user  
-- Database index ensures efficient querying
-- Server-side filtering limits network payload
-- Client-side notification display handles batch of 20+ notifications (edge case)
+✅ **AC-15**: System scales with many reminders
+- Efficient database query with proper indexes
+- No performance degradation with 100+ pending reminders
+- Query uses `WHERE` filters to minimize rows scanned
 
-✅ **NFR-4**: Notification system works across major browsers  
-- Chrome, Edge, Firefox, Safari (desktop and mobile)
-- Graceful degradation for unsupported browsers
-- No console errors on browsers without Notification API
+✅ **AC-16**: Browser compatibility
+- Works in Chrome, Firefox, Safari, Edge
+- Graceful fallback when notifications unsupported
+- Feature detection: `'Notification' in window`
 
----
+✅ **AC-17**: Accessibility compliance
+- Reminder selector keyboard navigable
+- Screen readers announce reminder settings
+- Notification click navigation works with keyboard
 
 ## Testing Requirements
 
-### Unit Tests
-
-**Test Suite 1: Reminder Calculation Logic**
-```typescript
-describe('Reminder Time Calculation', () => {
-  test('calculates 15-minute reminder correctly', () => {
-    const dueDate = parseISO('2025-11-12T15:00:00+08:00');
-    const reminderTime = subMinutes(dueDate, 15);
-    expect(reminderTime.toISOString()).toBe('2025-11-12T14:45:00+08:00');
-  });
-
-  test('calculates 1-week reminder correctly', () => {
-    const dueDate = parseISO('2025-11-19T10:00:00+08:00');
-    const reminderTime = subMinutes(dueDate, 10080); // 7 days
-    expect(reminderTime.toISOString()).toBe('2025-11-12T10:00:00+08:00');
-  });
-
-  test('excludes past due todos from notifications', () => {
-    const now = parseISO('2025-11-12T16:00:00+08:00');
-    const dueDate = parseISO('2025-11-12T15:00:00+08:00'); // Already passed
-    const reminderTime = subMinutes(dueDate, 30);
-    const shouldNotify = now >= reminderTime && now < dueDate;
-    expect(shouldNotify).toBe(false);
-  });
-});
-```
-
----
-
-**Test Suite 2: Reminder Badge Display**
-```typescript
-describe('ReminderBadge Component', () => {
-  test('displays "15m" for 15 minutes', () => {
-    render(<ReminderBadge reminderMinutes={15} />);
-    expect(screen.getByText('🔔 15m')).toBeInTheDocument();
-  });
-
-  test('displays "1d" for 1440 minutes', () => {
-    render(<ReminderBadge reminderMinutes={1440} />);
-    expect(screen.getByText('🔔 1d')).toBeInTheDocument();
-  });
-
-  test('renders nothing when reminderMinutes is null', () => {
-    const { container } = render(<ReminderBadge reminderMinutes={null} />);
-    expect(container.firstChild).toBeNull();
-  });
-});
-```
-
----
-
-**Test Suite 3: API Endpoint - /api/notifications/check**
-```typescript
-describe('GET /api/notifications/check', () => {
-  test('returns todos with reminders due now', async () => {
-    // Setup: Create todo with due_date in 30 minutes, reminder_minutes = 30
-    const response = await fetch('/api/notifications/check', {
-      headers: { Cookie: sessionCookie },
-    });
-    const data = await response.json();
-    expect(data.notifications).toHaveLength(1);
-    expect(data.notifications[0].title).toBe('Test Todo');
-  });
-
-  test('excludes completed todos', async () => {
-    // Setup: Create todo with reminder, mark as completed
-    const response = await fetch('/api/notifications/check');
-    const data = await response.json();
-    expect(data.notifications).toHaveLength(0);
-  });
-
-  test('excludes todos with last_notification_sent set', async () => {
-    // Setup: Create todo, set last_notification_sent to now
-    const response = await fetch('/api/notifications/check');
-    const data = await response.json();
-    expect(data.notifications).toHaveLength(0);
-  });
-
-  test('returns 401 when not authenticated', async () => {
-    const response = await fetch('/api/notifications/check'); // No session cookie
-    expect(response.status).toBe(401);
-  });
-});
-```
-
----
-
 ### E2E Tests (Playwright)
 
-**Test File**: `tests/06-reminders-notifications.spec.ts`
+**Test File**: `tests/04-reminders-notifications.spec.ts`
 
-**Test Case 1: Enable Notifications**
 ```typescript
-test('should enable notifications when permission granted', async ({ page, context }) => {
-  // Grant notification permission
-  await context.grantPermissions(['notifications']);
+import { test, expect } from '@playwright/test';
+import { AuthHelper } from './helpers';
 
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page); // Helper function
-
-  // Check button state
-  const button = page.locator('button:has-text("Notifications On")');
-  await expect(button).toBeVisible();
-  await expect(button).toHaveClass(/bg-green-100/);
-});
-```
-
----
-
-**Test Case 2: Set Reminder on New Todo**
-```typescript
-test('should set reminder on todo with due date', async ({ page }) => {
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page);
-
-  // Create todo with due date
-  await page.fill('input[placeholder="Add a new todo..."]', 'Test Todo');
-  await page.click('button[aria-label="Set due date"]');
-  await page.click('button:has-text("15")'); // Select 15th of month
+test.describe('Reminders & Notifications', () => {
+  let authHelper: AuthHelper;
   
-  // Set reminder
-  await page.selectOption('select[aria-label="Reminder"]', '1440'); // 1 day before
-  await page.press('input[placeholder="Add a new todo..."]', 'Enter');
-
-  // Verify badge appears
-  const badge = page.locator('text=🔔 1d');
-  await expect(badge).toBeVisible();
-});
-```
-
----
-
-**Test Case 3: Reminder Dropdown Disabled Without Due Date**
-```typescript
-test('should disable reminder dropdown when no due date', async ({ page }) => {
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page);
-
-  // Open add todo form
-  await page.click('input[placeholder="Add a new todo..."]');
-
-  // Reminder dropdown should be disabled
-  const reminderSelect = page.locator('select[aria-label="Reminder"]');
-  await expect(reminderSelect).toBeDisabled();
-
-  // Set due date
-  await page.click('button[aria-label="Set due date"]');
-  await page.click('button:has-text("20")');
-
-  // Reminder dropdown should now be enabled
-  await expect(reminderSelect).toBeEnabled();
-});
-```
-
----
-
-**Test Case 4: Receive Notification (Simulated)**
-```typescript
-test('should trigger notification for todo due soon', async ({ page, context }) => {
-  await context.grantPermissions(['notifications']);
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page);
-
-  // Create todo due in 20 minutes with 15-minute reminder
-  const dueDate = new Date(Date.now() + 20 * 60 * 1000); // 20 minutes from now
-  await createTodoWithReminder(page, 'Urgent Task', dueDate, 15);
-
-  // Mock the API to return this todo as needing notification
-  await page.route('**/api/notifications/check', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        notifications: [
-          {
-            id: 1,
-            title: 'Urgent Task',
-            due_date: dueDate.toISOString(),
-            reminder_minutes: 15,
-          },
-        ],
-      }),
+  test.beforeEach(async ({ page, context }) => {
+    authHelper = new AuthHelper(page);
+    await authHelper.registerAndLogin();
+    
+    // Grant notification permissions
+    await context.grantPermissions(['notifications']);
+  });
+  
+  test('should create todo with reminder', async ({ page }) => {
+    await page.fill('input[name="title"]', 'Important meeting');
+    await page.fill('input[name="due_date"]', '2025-11-15T14:00');
+    await page.selectOption('select[name="reminder"]', '60'); // 1 hour before
+    await page.click('button:has-text("Add Todo")');
+    
+    // Verify reminder badge
+    const badge = page.locator('text=Important meeting').locator('..').locator('.bg-purple-50');
+    await expect(badge).toContainText('1h');
+  });
+  
+  test('should disable reminder without due date', async ({ page }) => {
+    await page.fill('input[name="title"]', 'No due date task');
+    
+    // Reminder selector should be disabled
+    const selector = page.locator('select[name="reminder"]');
+    await expect(selector).toBeDisabled();
+    
+    // Warning message
+    await expect(page.locator('text=Set a due date to enable reminders')).toBeVisible();
+  });
+  
+  test('should show notification permission banner', async ({ page, context }) => {
+    // Reset permissions to default
+    await context.clearPermissions();
+    
+    await page.reload();
+    
+    // Banner should appear
+    await expect(page.locator('text=Enable Notifications')).toBeVisible();
+  });
+  
+  test('should request notification permission', async ({ page, context }) => {
+    await context.clearPermissions();
+    await page.reload();
+    
+    // Click enable button
+    await page.click('button:has-text("Enable")');
+    
+    // Permission should be granted (auto-granted in test environment)
+    await page.waitForTimeout(500);
+    
+    // Banner should disappear
+    await expect(page.locator('text=Enable Notifications')).not.toBeVisible();
+  });
+  
+  test('should change reminder on existing todo', async ({ page }) => {
+    await authHelper.createTodo('Task with reminder', {
+      dueDate: '2025-11-15T10:00:00+08:00',
+      reminder: 60
     });
+    
+    // Edit reminder
+    await page.click('[data-testid="todo-1"] button[aria-label="Edit"]');
+    await page.selectOption('select[name="reminder"]', '1440'); // 1 day before
+    await page.click('button:has-text("Save")');
+    await page.waitForTimeout(500);
+    
+    // Verify updated badge
+    const badge = page.locator('[data-testid="todo-1"] .bg-purple-50');
+    await expect(badge).toContainText('1d');
   });
-
-  // Wait for polling interval (60 seconds in production, can be mocked shorter)
-  // Verify notification was called (requires browser notification mock)
-  // This is challenging to fully E2E test; consider integration test approach
-});
-```
-
----
-
-**Test Case 5: Edit Reminder Timing**
-```typescript
-test('should update reminder and reset notification tracking', async ({ page }) => {
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page);
-
-  // Create todo with 1-day reminder
-  await createTodoWithReminder(page, 'Meeting Prep', getTomorrowDate(), 1440);
-
-  // Edit reminder to 2 hours
-  await page.click('button[aria-label="Edit todo"]');
-  await page.selectOption('select[aria-label="Reminder"]', '120');
-  await page.click('button:has-text("Save")');
-
-  // Verify badge updated
-  const badge = page.locator('text=🔔 2h');
-  await expect(badge).toBeVisible();
-
-  // Verify in database (requires API inspection or direct DB query)
-  const response = await page.request.get('/api/todos');
-  const data = await response.json();
-  const todo = data.todos.find((t: Todo) => t.title === 'Meeting Prep');
-  expect(todo.reminder_minutes).toBe(120);
-  expect(todo.last_notification_sent).toBeNull();
-});
-```
-
----
-
-**Test Case 6: Remove Reminder**
-```typescript
-test('should remove reminder and hide badge', async ({ page }) => {
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page);
-
-  // Create todo with reminder
-  await createTodoWithReminder(page, 'Task', getTomorrowDate(), 60);
-
-  // Edit to remove reminder
-  await page.click('button[aria-label="Edit todo"]');
-  await page.selectOption('select[aria-label="Reminder"]', ''); // "None"
-  await page.click('button:has-text("Save")');
-
-  // Verify badge removed
-  const badge = page.locator('text=🔔 1h');
-  await expect(badge).not.toBeVisible();
-});
-```
-
----
-
-**Test Case 7: Recurring Todo Inherits Reminder**
-```typescript
-test('should inherit reminder on recurring todo completion', async ({ page }) => {
-  await page.goto('http://localhost:3000');
-  await authenticateUser(page);
-
-  // Create daily recurring todo with 1-day reminder
-  await page.fill('input[placeholder="Add a new todo..."]', 'Daily Standup');
-  await page.click('button[aria-label="Set due date"]');
-  await page.click('button:has-text("13")'); // Tomorrow
-  await page.selectOption('select[aria-label="Recurrence"]', 'daily');
-  await page.selectOption('select[aria-label="Reminder"]', '1440');
-  await page.press('input[placeholder="Add a new todo..."]', 'Enter');
-
-  // Complete the todo
-  await page.click('input[type="checkbox"][aria-label="Complete todo"]');
-
-  // Verify new instance has reminder badge
-  const activeTodos = page.locator('.active-todos');
-  const badge = activeTodos.locator('text=🔔 1d');
-  await expect(badge).toBeVisible();
-
-  // Verify new instance in API
-  const response = await page.request.get('/api/todos');
-  const data = await response.json();
-  const newInstance = data.todos.find(
-    (t: Todo) => t.title === 'Daily Standup' && !t.completed
-  );
-  expect(newInstance.reminder_minutes).toBe(1440);
-  expect(newInstance.last_notification_sent).toBeNull();
-});
-```
-
----
-
-### Integration Tests
-
-**Test Suite: Notification Polling Hook**
-```typescript
-describe('useNotifications Hook', () => {
-  test('polls API every 60 seconds when enabled', async () => {
-    jest.useFakeTimers();
-    const mockFetch = jest.spyOn(global, 'fetch');
-
-    renderHook(() => useNotifications(true));
-
-    // Initial call
-    expect(mockFetch).toHaveBeenCalledWith('/api/notifications/check');
-
-    // Advance time by 60 seconds
-    jest.advanceTimersByTime(60000);
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-
-    jest.useRealTimers();
+  
+  test('should remove reminder from todo', async ({ page }) => {
+    await authHelper.createTodo('Task with reminder', {
+      dueDate: '2025-11-15T10:00:00+08:00',
+      reminder: 60
+    });
+    
+    // Remove reminder
+    await page.click('[data-testid="todo-1"] button[aria-label="Edit"]');
+    await page.selectOption('select[name="reminder"]', 'none');
+    await page.click('button:has-text("Save")');
+    await page.waitForTimeout(500);
+    
+    // Verify no badge
+    const badge = page.locator('[data-testid="todo-1"] .bg-purple-50');
+    await expect(badge).not.toBeVisible();
   });
-
-  test('does not poll when disabled', () => {
-    const mockFetch = jest.spyOn(global, 'fetch');
-    renderHook(() => useNotifications(false));
-    expect(mockFetch).not.toHaveBeenCalled();
+  
+  test('should inherit reminder to recurring todo', async ({ page }) => {
+    await authHelper.createTodo('Daily task', {
+      dueDate: '2025-11-13T09:00:00+08:00',
+      recurrence: 'daily',
+      reminder: 60
+    });
+    
+    // Complete todo
+    await page.click('[data-testid="todo-1"] input[type="checkbox"]');
+    await page.waitForTimeout(500);
+    
+    // Verify next instance has reminder
+    const newTodoBadge = page.locator('[data-testid="todo-2"] .bg-purple-50');
+    await expect(newTodoBadge).toContainText('1h');
+  });
+  
+  test('should not send notification for completed todo', async ({ page }) => {
+    // Create todo due soon
+    await authHelper.createTodo('Soon task', {
+      dueDate: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min from now
+      reminder: 15
+    });
+    
+    // Complete immediately
+    await page.click('[data-testid="todo-1"] input[type="checkbox"]');
+    await page.waitForTimeout(500);
+    
+    // Wait for polling cycle
+    await page.waitForTimeout(65000); // Wait past notification time
+    
+    // No notification should appear (hard to test directly in Playwright)
+    // Verify by checking API didn't mark as sent
+    // (This is better tested in unit tests)
+  });
+  
+  test('should show all reminder options', async ({ page }) => {
+    await page.fill('input[name="due_date"]', '2025-11-15T14:00');
+    
+    const selector = page.locator('select[name="reminder"]');
+    await expect(selector).toBeEnabled();
+    
+    // Verify all options present
+    await expect(selector.locator('option[value="15"]')).toContainText('15 minutes');
+    await expect(selector.locator('option[value="30"]')).toContainText('30 minutes');
+    await expect(selector.locator('option[value="60"]')).toContainText('1 hour');
+    await expect(selector.locator('option[value="120"]')).toContainText('2 hours');
+    await expect(selector.locator('option[value="1440"]')).toContainText('1 day');
+    await expect(selector.locator('option[value="10080"]')).toContainText('1 week');
   });
 });
 ```
 
----
+### Unit Tests
+
+**Test File**: `tests/unit/notifications.test.ts`
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { calculateNotificationTime, shouldSendNotification } from '@/lib/timezone';
+
+describe('Notification Time Calculations', () => {
+  it('should calculate 1 hour before due date', () => {
+    const dueDate = '2025-11-15T14:00:00+08:00';
+    const notificationTime = calculateNotificationTime(dueDate, 60);
+    
+    expect(notificationTime.getHours()).toBe(13); // 1:00 PM
+  });
+  
+  it('should calculate 1 day before due date', () => {
+    const dueDate = '2025-11-15T14:00:00+08:00';
+    const notificationTime = calculateNotificationTime(dueDate, 1440);
+    
+    expect(notificationTime.getDate()).toBe(14); // Nov 14
+    expect(notificationTime.getHours()).toBe(14); // 2:00 PM
+  });
+  
+  it('should handle month boundary', () => {
+    const dueDate = '2025-12-01T10:00:00+08:00';
+    const notificationTime = calculateNotificationTime(dueDate, 1440);
+    
+    expect(notificationTime.getMonth()).toBe(10); // November (0-indexed)
+    expect(notificationTime.getDate()).toBe(30);
+  });
+});
+
+describe('shouldSendNotification', () => {
+  it('should return true when notification time arrived and not sent', () => {
+    const dueDate = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min from now
+    const result = shouldSendNotification(dueDate, 60, null); // 1 hour before, not sent
+    
+    expect(result).toBe(true);
+  });
+  
+  it('should return false when already sent', () => {
+    const dueDate = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const lastSent = new Date().toISOString();
+    const result = shouldSendNotification(dueDate, 60, lastSent);
+    
+    expect(result).toBe(false);
+  });
+  
+  it('should return false when notification time not arrived', () => {
+    const dueDate = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2 hours from now
+    const result = shouldSendNotification(dueDate, 60, null); // 1 hour before
+    
+    expect(result).toBe(false);
+  });
+  
+  it('should return false when todo is overdue', () => {
+    const dueDate = new Date(Date.now() - 30 * 60 * 1000).toISOString(); // 30 min ago
+    const result = shouldSendNotification(dueDate, 60, null);
+    
+    expect(result).toBe(false);
+  });
+});
+```
+
+### API Tests
+
+**Test File**: `tests/api/notifications.test.ts`
+
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createMocks } from 'node-mocks-http';
+import { GET as checkNotifications } from '@/app/api/notifications/check/route';
+
+describe('Notification API', () => {
+  it('should return pending notifications', async () => {
+    // Setup: Create todo with reminder
+    // ... (test implementation depends on test DB setup)
+    
+    const { req } = createMocks({ method: 'GET' });
+    const response = await checkNotifications(req);
+    const data = await response.json();
+    
+    expect(response.status).toBe(200);
+    expect(data).toHaveProperty('notifications');
+    expect(Array.isArray(data.notifications)).toBe(true);
+  });
+  
+  it('should mark notification as sent', async () => {
+    // Test that last_notification_sent is updated after check
+  });
+  
+  it('should not return completed todos', async () => {
+    // Test that is_completed = 1 todos are filtered out
+  });
+});
+```
 
 ## Out of Scope
 
-### V1 Exclusions
+The following features are explicitly **not included** in this PRP:
 
-❌ **Push Notifications (Mobile/Progressive Web App)**  
-- Requires service worker and backend push infrastructure
-- Consider for V2 if mobile app developed
+### 1. Email/SMS Notifications
+- Only browser notifications supported
+- No email reminders
+- No SMS/text message alerts
+- No webhook/third-party integrations
 
-❌ **Email/SMS Notifications**  
-- Requires external services (SendGrid, Twilio)
-- Significantly increases complexity and cost
-- Browser notifications sufficient for web app
+### 2. Custom Notification Sounds
+- Uses browser default notification sound
+- No per-todo custom sounds
+- No sound selection UI
+- OS-level sound settings apply
 
-❌ **Custom Notification Sounds**  
-- Uses browser's default notification sound
-- Custom sounds require audio files and additional permissions
+### 3. Snooze Functionality
+- No "remind me again in 10 minutes"
+- No postponing notifications
+- Single notification per reminder setting
 
-❌ **Notification History/Log**  
-- No persistent record of sent notifications
-- Users cannot view past notifications in app
-- Could be added in future if user research indicates value
+### 4. Notification History
+- No log of past notifications
+- No "missed notifications" list
+- Current state only (not sent vs sent)
 
-❌ **Snooze/Postpone Notification**  
-- Cannot snooze notification for X minutes from notification UI
-- User must interact with todo directly in app
-- Complex UX; low priority for V1
+### 5. Smart/Adaptive Timing
+- No ML-based reminder suggestions
+- No "remind when I'm free" calendar integration
+- Fixed timing options only
 
-❌ **Multiple Reminders Per Todo**  
-- Each todo supports only one reminder timing
-- Users cannot set both "1 day before" and "1 hour before"
-- Database schema would need array or separate reminders table
+### 6. Multiple Reminders Per Todo
+- One reminder setting per todo
+- No "1 day before AND 1 hour before"
+- Use recurring pattern for repeated reminders
 
-❌ **Notification Grouping/Batching**  
-- Each todo triggers separate notification
-- If 10 todos due soon, user sees 10 notifications
-- Could add batching logic (e.g., "You have 5 todos due soon")
+### 7. Notification Grouping/Batching
+- Each todo gets individual notification
+- No "5 todos due today" digest
+- Browser may group (OS-dependent, not controlled by app)
 
-❌ **Conditional Reminders (e.g., only on weekdays)**  
-- Reminders always fire based on due date, no day-of-week logic
-- Complex UX; edge cases around holidays and user preferences
+### 8. Priority-Based Notification Channels
+- No different notification styles by priority
+- All notifications use same browser API
+- Priority shown in notification body only
 
-❌ **Integration with Calendar Apps (Google Calendar, Outlook)**  
-- Todos do not sync with external calendars
-- No iCal export with reminders
-- Significant scope increase; consider separate feature
+### 9. Push Notifications (Mobile App)
+- Browser notifications only (Web Notifications API)
+- No native mobile app push
+- PWA notifications work but limited by browser
 
-❌ **Notification Settings Page**  
-- No centralized UI to manage notification preferences
-- Cannot disable notifications per-tag or per-priority
-- Simple enable/disable button is sufficient for V1
-
----
+### 10. Notification Analytics
+- No tracking of notification open rates
+- No "you missed X notifications" metrics
+- No notification effectiveness analysis
 
 ## Success Metrics
 
-### Adoption Metrics
+### User Engagement Metrics
 
-📊 **M1: Notification Enablement Rate**  
-- **Target**: 60% of active users enable notifications within first 7 days
-- **Measurement**: Track `Notification.permission === 'granted'` events
-- **Rationale**: High enablement indicates feature discoverability and value
+1. **Notification Permission Grant Rate**
+   - Target: >60% of users grant notification permissions
+   - Measure: `COUNT(users who granted) / COUNT(total users) * 100`
 
-📊 **M2: Reminder Usage Rate**  
-- **Target**: 40% of todos with due dates have reminders set
-- **Measurement**: SQL query: `COUNT(reminder_minutes IS NOT NULL) / COUNT(due_date IS NOT NULL)`
-- **Rationale**: Indicates users find reminder feature useful for due date management
+2. **Reminder Usage Rate**
+   - Target: >40% of todos with due dates have reminders set
+   - Measure: `COUNT(todos WHERE reminder_minutes IS NOT NULL) / COUNT(todos WHERE due_date IS NOT NULL) * 100`
 
-📊 **M3: Notification Delivery Success Rate**  
-- **Target**: 95% of reminders trigger notifications successfully
-- **Measurement**: Compare `last_notification_sent` updates vs. expected reminder times
-- **Rationale**: Ensures technical reliability of polling and notification system
+3. **Most Popular Reminder Timing**
+   - Target: Identify user preferences for product optimization
+   - Measure: Distribution of `reminder_minutes` values
 
-### Engagement Metrics
+### System Performance Metrics
 
-📊 **M4: Notification Interaction Rate**  
-- **Target**: 70% of notifications are acknowledged (clicked or dismissed) within 5 minutes
-- **Measurement**: Browser notification API callbacks (if available)
-- **Rationale**: Indicates notifications are timely and relevant
+4. **Notification Delivery Accuracy**
+   - Target: >99% of notifications sent within 60 seconds of calculated time
+   - Measure: Timestamp analysis of `last_notification_sent` vs calculated time
 
-📊 **M5: Recurring Todo Reminder Inheritance**  
-- **Target**: 90% of recurring todos created from templates preserve reminder settings
-- **Measurement**: Track `reminder_minutes` match between parent and new instance
-- **Rationale**: Ensures inheritance logic works correctly
+5. **API Response Time**
+   - Target: `/api/notifications/check` responds in <200ms
+   - Measure: Server-side response time monitoring
 
-📊 **M6: Reminder Timing Distribution**  
-- **Target**: Identify most popular reminder timing
-- **Measurement**: Histogram of `reminder_minutes` values
-- **Insight**: Informs future UX decisions (e.g., default reminder, reorder dropdown)
-
-### Performance Metrics
-
-📊 **M7: Notification Check API Latency**  
-- **Target**: p95 response time < 300ms
-- **Measurement**: Server-side request logging
-- **Rationale**: Ensures polling does not impact app responsiveness
-
-📊 **M8: Client-Side Polling Overhead**  
-- **Target**: <5% CPU usage from polling when app idle
-- **Measurement**: Browser performance profiling
-- **Rationale**: Ensures polling is lightweight and non-intrusive
+6. **Polling Efficiency**
+   - Target: <1% CPU usage from polling on client
+   - Measure: Browser performance profiling
 
 ### User Satisfaction Metrics
 
-📊 **M9: Feature Helpfulness (Survey)**  
-- **Target**: 4.5/5 average rating on "How useful are reminders?"
-- **Measurement**: In-app survey after 2 weeks of use
-- **Rationale**: Direct user feedback on feature value
+7. **Task Completion Rate Improvement**
+   - Target: 25% increase in on-time task completion for todos with reminders
+   - Measure: Compare completion times for todos with/without reminders
 
-📊 **M10: Duplicate Notification Complaints**  
-- **Target**: <1% of users report duplicate notifications
-- **Measurement**: Support tickets, user feedback
-- **Rationale**: Validates duplicate prevention logic effectiveness
+8. **User Satisfaction Score**
+   - Target: >4.5/5 rating on "Reminders help me stay on track"
+   - Measure: In-app feedback survey
+
+### Technical Quality Metrics
+
+9. **Error Rate**
+   - Target: <0.1% error rate on notification operations
+   - Measure: API error responses / total notification API calls
+
+10. **Test Coverage**
+    - Target: >90% code coverage for notification logic
+    - Measure: Jest/Vitest coverage report
 
 ---
 
 ## Implementation Checklist
 
-### Phase 1: Foundation (Week 1)
-
-- [ ] Create database migration for `reminder_minutes` and `last_notification_sent` columns
-- [ ] Add database index on `(user_id, completed, due_date, reminder_minutes, last_notification_sent)`
-- [ ] Update `Todo` TypeScript interface in `lib/db.ts`
-- [ ] Implement `GET /api/notifications/check` endpoint with Singapore timezone logic
-- [ ] Implement `PATCH /api/notifications/{id}/sent` endpoint
-- [ ] Update `POST /api/todos` to accept `reminder_minutes` with validation
-- [ ] Update `PUT /api/todos/{id}` to handle reminder changes and reset `last_notification_sent`
-- [ ] Write unit tests for API endpoints
-
-### Phase 2: UI Components (Week 1-2)
-
-- [ ] Create `NotificationButton` component with permission states
-- [ ] Create `ReminderSelect` dropdown component with disabled logic
-- [ ] Create `ReminderBadge` component with abbreviated labels
-- [ ] Integrate components into main todo page (`app/page.tsx`)
-- [ ] Add CSS for badge styling and button states
-- [ ] Write component unit tests (React Testing Library)
-
-### Phase 3: Notification Hook (Week 2)
-
-- [ ] Create `lib/hooks/useNotifications.ts` with polling logic
-- [ ] Implement browser notification display with formatted due dates
-- [ ] Add client-side duplicate prevention (session-based Set)
-- [ ] Integrate hook into main page with enabled state management
-- [ ] Test in multiple browsers (Chrome, Firefox, Edge, Safari)
-- [ ] Write integration tests for hook
-
-### Phase 4: Recurring Todo Integration (Week 2)
-
-- [ ] Update recurring todo completion logic to copy `reminder_minutes`
-- [ ] Ensure `last_notification_sent = NULL` on new instances
-- [ ] Test notification inheritance across all recurrence patterns
-- [ ] Add E2E test for recurring reminder inheritance
-
-### Phase 5: E2E Testing (Week 3)
-
-- [ ] Write Playwright test: Enable notifications
-- [ ] Write Playwright test: Set reminder on new todo
-- [ ] Write Playwright test: Disabled state without due date
-- [ ] Write Playwright test: Edit reminder timing
-- [ ] Write Playwright test: Remove reminder
-- [ ] Write Playwright test: Recurring todo reminder inheritance
-- [ ] Write Playwright test: Badge display and visibility
-- [ ] Configure Playwright for notification permission grants
-
-### Phase 6: Edge Cases & Polish (Week 3)
-
-- [ ] Test permission denied state and messaging
-- [ ] Test multiple browser tabs scenario
-- [ ] Test past due todos exclusion
-- [ ] Test short reminder windows (15 minutes)
-- [ ] Test network failure resilience
-- [ ] Add logging for notification debugging
-- [ ] Performance profiling of polling overhead
-
-### Phase 7: Documentation & Launch (Week 4)
-
-- [ ] Update `USER_GUIDE.md` with reminders section (already complete)
-- [ ] Add inline comments for complex reminder calculation logic
-- [ ] Create developer documentation for notification system architecture
-- [ ] Train support team on permission troubleshooting
-- [ ] Set up monitoring for notification delivery metrics
-- [ ] Staged rollout: 10% → 50% → 100% of users
-- [ ] Monitor error rates and user feedback
+- [ ] Create `lib/hooks/useNotifications.ts` hook
+- [ ] Implement `/api/notifications/check` endpoint
+- [ ] Add notification time calculation functions to `lib/timezone.ts`
+- [ ] Create `ReminderSelector` component
+- [ ] Create `ReminderBadge` component
+- [ ] Create `NotificationBanner` component
+- [ ] Add database indexes for notification queries
+- [ ] Implement polling mechanism in main app component
+- [ ] Handle notification permission states (default/granted/denied)
+- [ ] Clear `last_notification_sent` when updating reminder/due date
+- [ ] Inherit reminder settings to recurring todo instances
+- [ ] Write E2E tests for reminder CRUD operations
+- [ ] Write unit tests for notification time calculations
+- [ ] Write API tests for check endpoint
+- [ ] Test browser notification display
+- [ ] Verify Singapore timezone consistency
+- [ ] Test edge cases (overdue, completed, permission denied)
+- [ ] Update USER_GUIDE.md with notification documentation
 
 ---
 
-## Appendix
-
-### Singapore Timezone Reference
-
-```typescript
-// lib/timezone.ts
-import { toZonedTime, formatInTimeZone } from 'date-fns-tz';
-
-const SINGAPORE_TZ = 'Asia/Singapore';
-
-export function getSingaporeNow(): Date {
-  return toZonedTime(new Date(), SINGAPORE_TZ);
-}
-
-export function formatSingaporeDate(isoString: string): string {
-  return formatInTimeZone(isoString, SINGAPORE_TZ, 'MMM d, yyyy h:mm a');
-}
-```
-
-### Reminder Minutes Enum Values
-
-| Label | Value (minutes) | Description |
-|-------|-----------------|-------------|
-| 15 minutes before | 15 | Very short notice; for time-sensitive tasks |
-| 30 minutes before | 30 | Short notice; typical meeting prep |
-| 1 hour before | 60 | Moderate notice; allows task switching |
-| 2 hours before | 120 | Extended notice; for complex preparation |
-| 1 day before | 1440 | Full business day notice; common for deadlines |
-| 2 days before | 2880 | Multi-day notice; strategic planning |
-| 1 week before | 10080 | Long-range notice; major milestones |
-
-### Browser Notification API Reference
-
-```typescript
-// Check support
-if ('Notification' in window) {
-  console.log('Notifications supported');
-}
-
-// Request permission
-const permission = await Notification.requestPermission();
-// Returns: 'granted', 'denied', or 'default'
-
-// Show notification
-const notification = new Notification('Title', {
-  body: 'Message text',
-  icon: '/icon.png',
-  badge: '🔔',
-  tag: 'unique-id', // Prevents duplicates
-  requireInteraction: true, // Persists until closed
-  data: { todoId: 123 }, // Custom payload
-});
-
-// Handle click
-notification.onclick = () => {
-  window.focus();
-  notification.close();
-};
-```
-
----
-
-**End of PRP-04: Reminders & Notifications**
+**Version**: 1.0  
+**Last Updated**: November 12, 2025  
+**Related PRPs**: 01-todo-crud-operations.md, 03-recurring-todos.md

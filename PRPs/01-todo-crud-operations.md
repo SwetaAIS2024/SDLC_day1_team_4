@@ -1,275 +1,366 @@
 # PRP-01: Todo CRUD Operations
 
-**Feature**: Core Todo Create, Read, Update, Delete Operations  
-**Version**: 1.0  
-**Last Updated**: November 12, 2025  
-**Status**: Foundation Feature  
-**Dependencies**: None (base feature)  
-**Tech Stack**: Next.js 16 App Router, React 19, better-sqlite3, Tailwind CSS 4
-
----
-
 ## Feature Overview
 
-The Todo CRUD Operations feature provides the fundamental create, read, update, and delete functionality for managing todo items in the application. This is the foundation upon which all other features are built.
+The Todo CRUD Operations feature provides the foundation for managing todo items in the application. Users can create, read, update, and delete todos with proper validation, error handling, and timezone awareness. All date/time operations use Singapore timezone (Asia/Singapore) to ensure consistency across the application. The implementation includes optimistic UI updates for a responsive user experience, with automatic rollback on server errors.
 
-**Key Capabilities:**
-- Create new todo items with title and optional due date
-- View all todos with real-time updates
-- Update todo properties (title, due date, completion status)
-- Delete individual todos
-- Singapore timezone handling for all date/time operations
-- Optimistic UI updates for responsive user experience
-- Client-side validation with server-side enforcement
-
-**Technical Approach:**
-- **Frontend**: Next.js 16 App Router with React 19 client components, Tailwind CSS 4
-- **Backend**: Next.js API routes (no separate server)
-- **Database**: SQLite via better-sqlite3 (synchronous operations, no async/await)
-- **Timezone**: Singapore (`Asia/Singapore`) for all date/time operations via `lib/timezone.ts`
-- **Auth**: Session-based via JWT in HTTP-only cookies (WebAuthn integration in PRP-11)
-- **Testing**: Playwright E2E tests with virtual authenticators
-
----
+**Core Capabilities:**
+- Create new todos with title and optional due date
+- View all todos for the authenticated user
+- Edit existing todo titles and due dates
+- Delete todos with cascade deletion of related data
+- Real-time validation with user feedback
+- Singapore timezone handling for all date operations
+- Optimistic UI updates with error recovery
 
 ## User Stories
 
 ### Primary Users
 
-**Story 1: Basic Todo Creation**
-```
-As a busy professional
-I want to quickly add a new task to my todo list
-So that I can capture important items without losing focus
-```
+**User Persona 1: Sarah - Busy Professional**
+- **Background**: Marketing manager in Singapore, manages multiple projects
+- **Goal**: Quickly capture tasks as they come up during meetings
+- **Need**: "As a busy professional, I want to quickly create todos so that I don't forget important tasks during my workday."
 
-**Story 2: Setting Due Dates**
-```
-As a project manager
-I want to assign due dates to my tasks
-So that I can track deadlines and prioritize work
-```
+**User Persona 2: Alex - Detail-Oriented Planner**
+- **Background**: Project coordinator, likes to organize tasks by deadlines
+- **Goal**: Set due dates for tasks to prioritize work
+- **Need**: "As a planner, I want to set due dates for my todos so that I can see what needs to be completed by when."
 
-**Story 3: Task Completion**
-```
-As a daily user
-I want to mark tasks as complete when I finish them
-So that I can track my progress and feel accomplished
-```
+**User Persona 3: Jamie - Task Completer**
+- **Background**: Software developer, tracks daily development tasks
+- **Goal**: Mark tasks as done and clean up completed items
+- **Need**: "As a task completer, I want to mark todos as complete and delete finished tasks so that my list stays manageable."
 
-**Story 4: Editing Task Details**
-```
-As a user who plans ahead
-I want to update task titles and due dates as priorities change
-So that my todo list stays current and accurate
-```
+### User Stories
 
-**Story 5: Removing Completed Tasks**
-```
-As someone who likes a clean workspace
-I want to delete tasks I no longer need
-So that my todo list remains focused and manageable
-```
+1. **Create Todo**
+   - As a user, I want to create a todo with just a title so that I can quickly capture tasks
+   - As a user, I want to optionally set a due date when creating a todo so that I can track deadlines
+   - As a user, I want to see my new todo immediately after creation so that I know it was saved
 
----
+2. **Read Todos**
+   - As a user, I want to see all my todos on the main page so that I have an overview of my tasks
+   - As a user, I want to see due dates in Singapore time so that deadlines are accurate for my location
+   - As a user, I want to see my most recently created todos first so that new tasks are prominent
+
+3. **Update Todo**
+   - As a user, I want to edit a todo's title so that I can correct typos or clarify the task
+   - As a user, I want to change or remove a due date so that I can adjust deadlines as plans change
+   - As a user, I want to mark a todo as complete so that I can track my progress
+
+4. **Delete Todo**
+   - As a user, I want to delete a todo so that I can remove tasks I no longer need
+   - As a user, I want confirmation before deleting so that I don't accidentally lose important tasks
+   - As a user, I want deleted todos to disappear immediately from my view
 
 ## User Flow
 
-### Flow 1: Creating a New Todo
+### Flow 1: Create a New Todo
 
 ```
-1. User views the main todo list page
-2. User clicks "Add Todo" button or presses input field
-3. User enters todo title (required, 1-500 characters)
-4. [Optional] User clicks calendar icon to select due date
-5. [Optional] User selects date from date picker
-6. User presses Enter or clicks "Add" button
-7. System validates input client-side
-8. UI immediately shows new todo (optimistic update)
-9. System sends POST request to /api/todos
-10. Server validates input and creates todo in database
-11. Server returns created todo with ID and timestamp
-12. UI updates with server-confirmed data
-13. [Error case] If server fails, UI rolls back optimistic update and shows error
+1. User lands on main page (/)
+2. User sees "Add new todo" input field at the top
+3. User types todo title (e.g., "Review Q4 budget report")
+4. User optionally clicks calendar icon to set due date
+   - Date picker opens in modal/popover
+   - User selects date (e.g., "Nov 15, 2025")
+   - Date picker closes, selected date shows next to input
+5. User presses Enter or clicks "Add" button
+6. Todo appears immediately at top of list (optimistic update)
+7. API call completes in background
+   - SUCCESS: Todo persists with server-generated ID
+   - FAILURE: Todo disappears, error message shows "Failed to create todo. Please try again."
+8. Input field clears, ready for next todo
 ```
 
-### Flow 2: Viewing Todos
+### Flow 2: View All Todos
 
 ```
-1. User navigates to home page (/)
-2. System checks for valid session (JWT cookie)
-3. Page component mounts and fetches todos
-4. GET request to /api/todos with user session
-5. Server queries database for user's todos
-6. Server returns todos sorted by created_at DESC
-7. UI renders todo list with:
-   - Title
-   - Due date (if set, formatted in Singapore timezone)
-   - Completion status checkbox
-   - Edit and delete buttons
-8. User sees real-time list of all their todos
+1. User navigates to main page (/)
+2. Page loads and fetches todos from API
+3. Loading state shows (e.g., skeleton screens or spinner)
+4. Todos render in list format, newest first
+5. Each todo displays:
+   - Title text
+   - Due date (if set) in format "Due: Nov 15, 2025, 2:30 PM SGT"
+   - Completion checkbox
+   - Edit and delete action buttons
+6. Empty state shows if no todos: "No todos yet. Create your first one!"
 ```
 
-### Flow 3: Updating a Todo
+### Flow 3: Edit an Existing Todo
 
-**A. Toggle Completion**
+```
+1. User clicks "Edit" button on a todo
+2. Todo switches to edit mode:
+   - Title becomes editable text input (pre-filled with current title)
+   - Due date picker appears (pre-filled with current date or empty)
+   - "Save" and "Cancel" buttons replace "Edit" button
+3. User modifies title and/or due date
+4. User clicks "Save"
+5. Todo updates immediately in UI (optimistic update)
+6. API call completes in background
+   - SUCCESS: Todo persists with updated values
+   - FAILURE: Todo reverts to original values, error message shows
+7. Todo switches back to view mode
+```
+
+### Flow 4: Complete a Todo
+
 ```
 1. User clicks checkbox next to todo
-2. UI immediately toggles visual state (optimistic)
-3. System sends PUT request to /api/todos/[id]
-4. Server updates completed_at timestamp (or sets to null)
-5. Server returns updated todo
-6. UI confirms update with server data
-7. [Error case] If fails, checkbox reverts and error shown
+2. Checkbox fills immediately (optimistic update)
+3. Todo gets visual styling change (e.g., strikethrough, gray text)
+4. API call updates completed status
+   - SUCCESS: Todo stays marked as complete
+   - FAILURE: Checkbox unchecks, error message shows
+5. (Optional) Completed todos move to bottom of list or separate section
 ```
 
-**B. Edit Title/Due Date**
-```
-1. User clicks "Edit" button on todo
-2. Todo row transforms into edit mode
-3. User modifies title and/or due date
-4. User clicks "Save" or presses Enter
-5. System validates input client-side
-6. UI shows updated values (optimistic)
-7. System sends PUT request with changes
-8. Server validates and updates database
-9. Server returns updated todo
-10. UI confirms with server data
-11. [Error case] If validation fails, show error and allow correction
-```
-
-### Flow 4: Deleting a Todo
+### Flow 5: Delete a Todo
 
 ```
-1. User clicks "Delete" (trash icon) button
-2. [Optional] System shows confirmation dialog
-3. User confirms deletion
-4. UI immediately removes todo from list (optimistic)
-5. System sends DELETE request to /api/todos/[id]
-6. Server deletes todo from database
-7. Server returns success response
-8. [Error case] If fails, todo reappears and error shown
-9. [Cascade] All associated subtasks are deleted automatically
+1. User clicks "Delete" button (trash icon) on a todo
+2. Confirmation dialog appears: "Delete 'Review Q4 budget report'? This cannot be undone."
+3. User clicks "Delete" in confirmation dialog
+4. Todo disappears immediately from list (optimistic update)
+5. API call completes in background
+   - SUCCESS: Todo permanently deleted
+   - FAILURE: Todo reappears in list, error message shows
+6. If user clicks "Cancel", dialog closes and no action taken
 ```
 
----
+### Flow 6: Error Handling
+
+```
+SCENARIO: Network failure during creation
+1. User creates todo "Call dentist"
+2. Todo appears in UI immediately
+3. Network request fails (timeout, 500 error, etc.)
+4. Todo shakes/flashes red and disappears
+5. Toast notification: "Failed to create todo. Please check your connection."
+6. User can retry by creating the todo again
+```
 
 ## Technical Requirements
 
 ### Database Schema
 
 **Table: `todos`**
+
 ```sql
 CREATE TABLE IF NOT EXISTS todos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  title TEXT NOT NULL CHECK(length(title) >= 1 AND length(title) <= 500),
-  completed_at TEXT,  -- ISO 8601 timestamp in Singapore timezone
-  due_date TEXT,      -- ISO 8601 date string (YYYY-MM-DD)
+  title TEXT NOT NULL CHECK(length(title) <= 500),
+  completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1)),
+  due_date TEXT, -- ISO 8601 format in Singapore timezone (e.g., "2025-11-15T14:30:00+08:00")
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  
-  -- Future feature columns (nullable, implemented in other PRPs)
-  priority TEXT CHECK(priority IN ('low', 'medium', 'high')),
-  recurrence_pattern TEXT CHECK(recurrence_pattern IN ('daily', 'weekly', 'monthly', 'yearly')),
-  reminder_minutes INTEGER,
-  last_notification_sent TEXT,
-  
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_todos_user_id ON todos(user_id);
-CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(due_date);
-CREATE INDEX IF NOT EXISTS idx_todos_completed_at ON todos(completed_at);
+CREATE INDEX idx_todos_user_id ON todos(user_id);
+CREATE INDEX idx_todos_due_date ON todos(due_date);
+CREATE INDEX idx_todos_completed ON todos(completed);
 ```
 
-**Note**: This schema includes columns for future features (priority, recurrence, reminders) to avoid migrations later. These fields are nullable and unused in this PRP.
+**Key Constraints:**
+- `title`: Required, max 500 characters
+- `completed`: Boolean stored as 0 (false) or 1 (true)
+- `due_date`: Optional, stored as ISO 8601 string with timezone
+- `user_id`: Foreign key to users table, cascade delete
 
 ### TypeScript Types
 
 **File: `lib/db.ts`**
-```typescript
-export type Priority = 'low' | 'medium' | 'high';
-export type RecurrencePattern = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
+```typescript
 export interface Todo {
   id: number;
   user_id: number;
   title: string;
-  completed_at: string | null;
-  due_date: string | null;  // YYYY-MM-DD format
-  created_at: string;
-  updated_at: string;
-  priority: Priority | null;
-  recurrence_pattern: RecurrencePattern | null;
-  reminder_minutes: number | null;
-  last_notification_sent: string | null;
+  completed: boolean; // Converted from 0/1 in DB
+  due_date: string | null; // ISO 8601 string or null
+  created_at: string; // ISO 8601 string
+  updated_at: string; // ISO 8601 string
 }
 
 export interface CreateTodoInput {
   title: string;
-  due_date?: string | null;
-  priority?: Priority;
-  recurrence_pattern?: RecurrencePattern;
-  reminder_minutes?: number;
+  due_date?: string | null; // Optional ISO 8601 string
 }
 
 export interface UpdateTodoInput {
   title?: string;
-  completed_at?: string | null;
-  due_date?: string | null;
-  priority?: Priority;
-  recurrence_pattern?: RecurrencePattern;
-  reminder_minutes?: number;
+  completed?: boolean;
+  due_date?: string | null; // Can be set to null to remove due date
 }
+
+export interface TodoResponse {
+  id: number;
+  title: string;
+  completed: boolean;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  // user_id excluded from API responses for security
+}
+```
+
+### Database Operations (lib/db.ts)
+
+```typescript
+import Database from 'better-sqlite3';
+import { getSingaporeNow } from './timezone';
+
+const db = new Database('todos.db');
+
+// Initialize todos table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL CHECK(length(title) <= 500),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1)),
+    due_date TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_todos_user_id ON todos(user_id);
+  CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(due_date);
+  CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
+`);
+
+export const todoDB = {
+  // Create a new todo
+  create: (userId: number, input: CreateTodoInput): Todo => {
+    const now = getSingaporeNow().toISOString();
+    const stmt = db.prepare(`
+      INSERT INTO todos (user_id, title, due_date, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(userId, input.title, input.due_date || null, now, now);
+    return todoDB.getById(userId, result.lastInsertRowid as number)!;
+  },
+
+  // Get all todos for a user
+  getAll: (userId: number): Todo[] => {
+    const stmt = db.prepare(`
+      SELECT * FROM todos 
+      WHERE user_id = ? 
+      ORDER BY created_at DESC
+    `);
+    const rows = stmt.all(userId) as any[];
+    return rows.map(row => ({
+      ...row,
+      completed: Boolean(row.completed)
+    }));
+  },
+
+  // Get a single todo by ID
+  getById: (userId: number, todoId: number): Todo | null => {
+    const stmt = db.prepare(`
+      SELECT * FROM todos 
+      WHERE id = ? AND user_id = ?
+    `);
+    const row = stmt.get(todoId, userId) as any;
+    if (!row) return null;
+    return {
+      ...row,
+      completed: Boolean(row.completed)
+    };
+  },
+
+  // Update a todo
+  update: (userId: number, todoId: number, input: UpdateTodoInput): Todo | null => {
+    const todo = todoDB.getById(userId, todoId);
+    if (!todo) return null;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (input.title !== undefined) {
+      updates.push('title = ?');
+      values.push(input.title);
+    }
+    if (input.completed !== undefined) {
+      updates.push('completed = ?');
+      values.push(input.completed ? 1 : 0);
+    }
+    if (input.due_date !== undefined) {
+      updates.push('due_date = ?');
+      values.push(input.due_date);
+    }
+
+    if (updates.length === 0) return todo;
+
+    updates.push('updated_at = ?');
+    values.push(getSingaporeNow().toISOString());
+    values.push(todoId, userId);
+
+    const stmt = db.prepare(`
+      UPDATE todos 
+      SET ${updates.join(', ')} 
+      WHERE id = ? AND user_id = ?
+    `);
+    stmt.run(...values);
+
+    return todoDB.getById(userId, todoId);
+  },
+
+  // Delete a todo
+  delete: (userId: number, todoId: number): boolean => {
+    const stmt = db.prepare(`
+      DELETE FROM todos 
+      WHERE id = ? AND user_id = ?
+    `);
+    const result = stmt.run(todoId, userId);
+    return result.changes > 0;
+  }
+};
+
+export { db };
 ```
 
 ### API Endpoints
 
-#### 1. Create Todo
-```typescript
-POST /api/todos
-Content-Type: application/json
-Cookie: session=<jwt-token>
+#### 1. Create Todo: `POST /api/todos`
 
-Request Body:
+**Request Body:**
+```json
 {
-  "title": "Complete project proposal",
-  "due_date": "2025-11-15"  // Optional, YYYY-MM-DD format
+  "title": "Review Q4 budget report",
+  "due_date": "2025-11-15T14:30:00+08:00" // Optional
 }
-
-Success Response (201 Created):
-{
-  "id": 42,
-  "user_id": 1,
-  "title": "Complete project proposal",
-  "completed_at": null,
-  "due_date": "2025-11-15",
-  "created_at": "2025-11-12T14:30:00+08:00",
-  "updated_at": "2025-11-12T14:30:00+08:00",
-  "priority": null,
-  "recurrence_pattern": null,
-  "reminder_minutes": null,
-  "last_notification_sent": null
-}
-
-Error Responses:
-400 Bad Request - { "error": "Title is required" }
-400 Bad Request - { "error": "Title must be between 1 and 500 characters" }
-400 Bad Request - { "error": "Invalid due_date format. Use YYYY-MM-DD" }
-401 Unauthorized - { "error": "Not authenticated" }
-500 Internal Server Error - { "error": "Failed to create todo" }
 ```
 
-**Implementation Pattern (app/api/todos/route.ts):**
+**Response (201 Created):**
+```json
+{
+  "id": 42,
+  "title": "Review Q4 budget report",
+  "completed": false,
+  "due_date": "2025-11-15T14:30:00+08:00",
+  "created_at": "2025-11-12T10:15:30+08:00",
+  "updated_at": "2025-11-12T10:15:30+08:00"
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: Invalid input (empty title, title too long)
+- `401 Unauthorized`: Not authenticated
+- `500 Internal Server Error`: Database error
+
+**Implementation (app/api/todos/route.ts):**
 ```typescript
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { todoDB } from '@/lib/db';
-import { isValidDateFormat } from '@/lib/timezone';
+import { todoDB, CreateTodoInput } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
-  // Pattern from copilot-instructions.md: Always check auth first
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -277,75 +368,57 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { title, due_date } = body;
+    const { title, due_date } = body as CreateTodoInput;
 
     // Validation
     if (!title || title.trim().length === 0) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
-
     if (title.length > 500) {
-      return NextResponse.json(
-        { error: 'Title must be between 1 and 500 characters' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Title must be 500 characters or less' }, { status: 400 });
     }
 
-    if (due_date && !isValidDateFormat(due_date)) {
-      return NextResponse.json(
-        { error: 'Invalid due_date format. Use YYYY-MM-DD' },
-        { status: 400 }
-      );
-    }
+    const todo = todoDB.create(session.userId, { title: title.trim(), due_date });
 
-    // Database operation (synchronous - no await needed)
-    const todo = todoDB.create(session.userId, {
-      title: title.trim(),
-      due_date: due_date || null
-    });
-
-    return NextResponse.json(todo, { status: 201 });
+    // Remove user_id from response
+    const { user_id, ...todoResponse } = todo;
+    return NextResponse.json(todoResponse, { status: 201 });
   } catch (error) {
-    console.error('Failed to create todo:', error);
-    return NextResponse.json(
-      { error: 'Failed to create todo' },
-      { status: 500 }
-    );
+    console.error('Error creating todo:', error);
+    return NextResponse.json({ error: 'Failed to create todo' }, { status: 500 });
   }
 }
 ```
 
-#### 2. Get All Todos
-```typescript
-GET /api/todos
-Cookie: session=<jwt-token>
+#### 2. Get All Todos: `GET /api/todos`
 
-Success Response (200 OK):
-{
-  "todos": [
-    {
-      "id": 42,
-      "user_id": 1,
-      "title": "Complete project proposal",
-      "completed_at": null,
-      "due_date": "2025-11-15",
-      "created_at": "2025-11-12T14:30:00+08:00",
-      "updated_at": "2025-11-12T14:30:00+08:00",
-      "priority": null,
-      "recurrence_pattern": null,
-      "reminder_minutes": null,
-      "last_notification_sent": null
-    },
-    // ... more todos, sorted by created_at DESC
-  ]
-}
-
-Error Responses:
-401 Unauthorized - { "error": "Not authenticated" }
-500 Internal Server Error - { "error": "Failed to fetch todos" }
+**Response (200 OK):**
+```json
+[
+  {
+    "id": 42,
+    "title": "Review Q4 budget report",
+    "completed": false,
+    "due_date": "2025-11-15T14:30:00+08:00",
+    "created_at": "2025-11-12T10:15:30+08:00",
+    "updated_at": "2025-11-12T10:15:30+08:00"
+  },
+  {
+    "id": 41,
+    "title": "Call dentist",
+    "completed": true,
+    "due_date": null,
+    "created_at": "2025-11-11T09:20:00+08:00",
+    "updated_at": "2025-11-12T08:45:00+08:00"
+  }
+]
 ```
 
-**Implementation Pattern (app/api/todos/route.ts):**
+**Error Responses:**
+- `401 Unauthorized`: Not authenticated
+- `500 Internal Server Error`: Database error
+
+**Implementation (app/api/todos/route.ts):**
 ```typescript
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -354,83 +427,53 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Synchronous database call
     const todos = todoDB.getAll(session.userId);
-    return NextResponse.json({ todos });
+    
+    // Remove user_id from all responses
+    const todosResponse = todos.map(({ user_id, ...todo }) => todo);
+    return NextResponse.json(todosResponse);
   } catch (error) {
-    console.error('Failed to fetch todos:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch todos' },
-      { status: 500 }
-    );
+    console.error('Error fetching todos:', error);
+    return NextResponse.json({ error: 'Failed to fetch todos' }, { status: 500 });
   }
 }
 ```
 
-#### 3. Get Single Todo
-```typescript
-GET /api/todos/[id]
-Cookie: session=<jwt-token>
+#### 3. Update Todo: `PUT /api/todos/[id]`
 
-Success Response (200 OK):
+**Request Body (partial updates allowed):**
+```json
 {
-  "id": 42,
-  "user_id": 1,
-  "title": "Complete project proposal",
-  "completed_at": null,
-  "due_date": "2025-11-15",
-  "created_at": "2025-11-12T14:30:00+08:00",
-  "updated_at": "2025-11-12T14:30:00+08:00",
-  "priority": null,
-  "recurrence_pattern": null,
-  "reminder_minutes": null,
-  "last_notification_sent": null
+  "title": "Review Q4 budget report (URGENT)",
+  "completed": true,
+  "due_date": "2025-11-16T14:30:00+08:00"
 }
-
-Error Responses:
-401 Unauthorized - { "error": "Not authenticated" }
-404 Not Found - { "error": "Todo not found" }
-500 Internal Server Error - { "error": "Failed to fetch todo" }
 ```
 
-#### 4. Update Todo
-```typescript
-PUT /api/todos/[id]
-Content-Type: application/json
-Cookie: session=<jwt-token>
-
-Request Body (all fields optional):
-{
-  "title": "Updated title",
-  "completed_at": "2025-11-12T15:45:00+08:00",  // or null to mark incomplete
-  "due_date": "2025-11-20"  // or null to remove due date
-}
-
-Success Response (200 OK):
+**Response (200 OK):**
+```json
 {
   "id": 42,
-  "user_id": 1,
-  "title": "Updated title",
-  "completed_at": "2025-11-12T15:45:00+08:00",
-  "due_date": "2025-11-20",
-  "created_at": "2025-11-12T14:30:00+08:00",
-  "updated_at": "2025-11-12T15:45:00+08:00",
-  "priority": null,
-  "recurrence_pattern": null,
-  "reminder_minutes": null,
-  "last_notification_sent": null
+  "title": "Review Q4 budget report (URGENT)",
+  "completed": true,
+  "due_date": "2025-11-16T14:30:00+08:00",
+  "created_at": "2025-11-12T10:15:30+08:00",
+  "updated_at": "2025-11-12T11:30:00+08:00"
 }
-
-Error Responses:
-400 Bad Request - { "error": "Title must be between 1 and 500 characters" }
-400 Bad Request - { "error": "Invalid due_date format. Use YYYY-MM-DD" }
-401 Unauthorized - { "error": "Not authenticated" }
-404 Not Found - { "error": "Todo not found" }
-500 Internal Server Error - { "error": "Failed to update todo" }
 ```
 
-**Implementation Pattern (app/api/todos/[id]/route.ts):**
+**Error Responses:**
+- `400 Bad Request`: Invalid input
+- `401 Unauthorized`: Not authenticated
+- `404 Not Found`: Todo doesn't exist or doesn't belong to user
+- `500 Internal Server Error`: Database error
+
+**Implementation (app/api/todos/[id]/route.ts):**
 ```typescript
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { todoDB, UpdateTodoInput } from '@/lib/db';
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -440,69 +483,56 @@ export async function PUT(
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  // CRITICAL: params is async in Next.js 16 (copilot-instructions.md pattern #4)
   const { id } = await params;
-  const todoId = parseInt(id);
+  const todoId = parseInt(id, 10);
+
+  if (isNaN(todoId)) {
+    return NextResponse.json({ error: 'Invalid todo ID' }, { status: 400 });
+  }
 
   try {
     const body = await request.json();
+    const updates = body as UpdateTodoInput;
 
     // Validation
-    if (body.title !== undefined) {
-      if (!body.title || body.title.trim().length === 0) {
-        return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    if (updates.title !== undefined) {
+      if (updates.title.trim().length === 0) {
+        return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 });
       }
-      if (body.title.length > 500) {
-        return NextResponse.json(
-          { error: 'Title must be between 1 and 500 characters' },
-          { status: 400 }
-        );
+      if (updates.title.length > 500) {
+        return NextResponse.json({ error: 'Title must be 500 characters or less' }, { status: 400 });
       }
+      updates.title = updates.title.trim();
     }
 
-    if (body.due_date && !isValidDateFormat(body.due_date)) {
-      return NextResponse.json(
-        { error: 'Invalid due_date format. Use YYYY-MM-DD' },
-        { status: 400 }
-      );
-    }
+    const todo = todoDB.update(session.userId, todoId, updates);
 
-    // Update (synchronous)
-    const updated = todoDB.update(session.userId, todoId, body);
-    
-    if (!updated) {
+    if (!todo) {
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }
 
-    return NextResponse.json(updated);
+    const { user_id, ...todoResponse } = todo;
+    return NextResponse.json(todoResponse);
   } catch (error) {
-    console.error('Failed to update todo:', error);
-    return NextResponse.json(
-      { error: 'Failed to update todo' },
-      { status: 500 }
-    );
+    console.error('Error updating todo:', error);
+    return NextResponse.json({ error: 'Failed to update todo' }, { status: 500 });
   }
 }
 ```
 
-#### 5. Delete Todo
-```typescript
-DELETE /api/todos/[id]
-Cookie: session=<jwt-token>
+#### 4. Delete Todo: `DELETE /api/todos/[id]`
 
-Success Response (200 OK):
-{
-  "success": true,
-  "message": "Todo deleted successfully"
-}
-
-Error Responses:
-401 Unauthorized - { "error": "Not authenticated" }
-404 Not Found - { "error": "Todo not found" }
-500 Internal Server Error - { "error": "Failed to delete todo" }
+**Response (204 No Content):**
+```
+(empty body)
 ```
 
-**Implementation Pattern (app/api/todos/[id]/route.ts):**
+**Error Responses:**
+- `401 Unauthorized`: Not authenticated
+- `404 Not Found`: Todo doesn't exist or doesn't belong to user
+- `500 Internal Server Error`: Database error
+
+**Implementation (app/api/todos/[id]/route.ts):**
 ```typescript
 export async function DELETE(
   request: NextRequest,
@@ -513,244 +543,112 @@ export async function DELETE(
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  // CRITICAL: params is async in Next.js 16
   const { id } = await params;
-  const todoId = parseInt(id);
+  const todoId = parseInt(id, 10);
+
+  if (isNaN(todoId)) {
+    return NextResponse.json({ error: 'Invalid todo ID' }, { status: 400 });
+  }
 
   try {
     const deleted = todoDB.delete(session.userId, todoId);
-    
+
     if (!deleted) {
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Todo deleted successfully'
-    });
+    return new NextResponse(null, { status: 204 });
   } catch (error) {
-    console.error('Failed to delete todo:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete todo' },
-      { status: 500 }
-    );
+    console.error('Error deleting todo:', error);
+    return NextResponse.json({ error: 'Failed to delete todo' }, { status: 500 });
   }
 }
 ```
 
-### Database Operations (lib/db.ts)
+### Singapore Timezone Utilities
+
+**File: `lib/timezone.ts`**
 
 ```typescript
-import Database from 'better-sqlite3';
-import { getSingaporeNow } from './timezone';
+import { DateTime } from 'luxon';
 
-// Database file in project root
-const db = new Database('todos.db');
+const SINGAPORE_TIMEZONE = 'Asia/Singapore';
 
-// Initialize schema
-db.exec(`
-  CREATE TABLE IF NOT EXISTS todos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    title TEXT NOT NULL CHECK(length(title) >= 1 AND length(title) <= 500),
-    completed_at TEXT,
-    due_date TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    priority TEXT CHECK(priority IN ('low', 'medium', 'high')),
-    recurrence_pattern TEXT CHECK(recurrence_pattern IN ('daily', 'weekly', 'monthly', 'yearly')),
-    reminder_minutes INTEGER,
-    last_notification_sent TEXT,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-  
-  CREATE INDEX IF NOT EXISTS idx_todos_user_id ON todos(user_id);
-  CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(due_date);
-  CREATE INDEX IF NOT EXISTS idx_todos_completed_at ON todos(completed_at);
-`);
-
-// Export database instance and CRUD operations
-export const todoDB = {
-  // Create new todo
-  create: (userId: number, input: CreateTodoInput): Todo => {
-    const now = getSingaporeNow().toISOString();
-    const stmt = db.prepare(`
-      INSERT INTO todos (user_id, title, due_date, created_at, updated_at, priority, recurrence_pattern, reminder_minutes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const result = stmt.run(
-      userId,
-      input.title,
-      input.due_date || null,
-      now,
-      now,
-      input.priority || null,
-      input.recurrence_pattern || null,
-      input.reminder_minutes || null
-    );
-    
-    const todo = todoDB.getById(userId, result.lastInsertRowid as number);
-    if (!todo) throw new Error('Failed to retrieve created todo');
-    return todo;
-  },
-
-  // Get all todos for a user
-  getAll: (userId: number): Todo[] => {
-    const stmt = db.prepare('SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC');
-    return stmt.all(userId) as Todo[];
-  },
-
-  // Get single todo by ID
-  getById: (userId: number, todoId: number): Todo | null => {
-    const stmt = db.prepare('SELECT * FROM todos WHERE id = ? AND user_id = ?');
-    return (stmt.get(todoId, userId) as Todo) || null;
-  },
-
-  // Update todo (dynamic field updates)
-  update: (userId: number, todoId: number, input: UpdateTodoInput): Todo | null => {
-    const now = getSingaporeNow().toISOString();
-    const updates: string[] = [];
-    const values: any[] = [];
-
-    if (input.title !== undefined) {
-      updates.push('title = ?');
-      values.push(input.title);
-    }
-    if (input.completed_at !== undefined) {
-      updates.push('completed_at = ?');
-      values.push(input.completed_at);
-    }
-    if (input.due_date !== undefined) {
-      updates.push('due_date = ?');
-      values.push(input.due_date);
-    }
-    if (input.priority !== undefined) {
-      updates.push('priority = ?');
-      values.push(input.priority);
-    }
-    if (input.recurrence_pattern !== undefined) {
-      updates.push('recurrence_pattern = ?');
-      values.push(input.recurrence_pattern);
-    }
-    if (input.reminder_minutes !== undefined) {
-      updates.push('reminder_minutes = ?');
-      values.push(input.reminder_minutes);
-    }
-
-    if (updates.length === 0) return todoDB.getById(userId, todoId);
-
-    updates.push('updated_at = ?');
-    values.push(now);
-    values.push(todoId, userId);
-
-    const stmt = db.prepare(`
-      UPDATE todos 
-      SET ${updates.join(', ')}
-      WHERE id = ? AND user_id = ?
-    `);
-    
-    stmt.run(...values);
-    return todoDB.getById(userId, todoId);
-  },
-
-  // Delete todo
-  delete: (userId: number, todoId: number): boolean => {
-    const stmt = db.prepare('DELETE FROM todos WHERE id = ? AND user_id = ?');
-    const result = stmt.run(todoId, userId);
-    return result.changes > 0;
-  }
-};
-
-export { db };
-```
-
-**Key Patterns from copilot-instructions.md:**
-- All DB operations are **synchronous** (better-sqlite3) - no async/await
-- Use prepared statements for all queries (SQL injection prevention)
-- Always use `getSingaporeNow()` instead of `new Date()`
-- Export DB object with CRUD methods (`todoDB`)
-- Single source of truth: all database interfaces in `lib/db.ts`
-
-### Singapore Timezone Handling (lib/timezone.ts)
-
-```typescript
 /**
  * Get current date/time in Singapore timezone
- * CRITICAL: ALWAYS use this instead of new Date() for consistency
- * Mandated by copilot-instructions.md pattern #3
+ * USE THIS instead of new Date() throughout the application
  */
-export function getSingaporeNow(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' }));
+export function getSingaporeNow(): DateTime {
+  return DateTime.now().setZone(SINGAPORE_TIMEZONE);
 }
 
 /**
- * Format date for Singapore timezone display
+ * Parse an ISO string as Singapore time
  */
-export function formatSingaporeDate(date: Date | string, format: 'date' | 'datetime' | 'time' = 'date'): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  
-  const options: Intl.DateTimeFormatOptions = {
-    timeZone: 'Asia/Singapore',
-    ...(format === 'date' && { year: 'numeric', month: 'short', day: 'numeric' }),
-    ...(format === 'datetime' && { 
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    }),
-    ...(format === 'time' && { hour: '2-digit', minute: '2-digit' })
-  };
-  
-  return d.toLocaleString('en-US', options);
+export function parseSingaporeDate(isoString: string): DateTime {
+  return DateTime.fromISO(isoString, { zone: SINGAPORE_TIMEZONE });
 }
 
 /**
- * Parse date string to Singapore timezone Date object
+ * Format a date for display in Singapore timezone
  */
-export function parseSingaporeDate(dateString: string): Date {
-  return new Date(new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Singapore' }));
+export function formatSingaporeDate(date: DateTime | string, format: string = 'MMM d, yyyy, h:mm a'): string {
+  const dt = typeof date === 'string' ? parseSingaporeDate(date) : date;
+  return dt.toFormat(format) + ' SGT';
 }
 
 /**
- * Validate YYYY-MM-DD date format
+ * Check if a date is in the past (Singapore time)
  */
-export function isValidDateFormat(dateString: string): boolean {
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!regex.test(dateString)) return false;
-  
-  const date = new Date(dateString);
-  return date instanceof Date && !isNaN(date.getTime());
+export function isPastDue(dueDate: string): boolean {
+  const now = getSingaporeNow();
+  const due = parseSingaporeDate(dueDate);
+  return due < now;
 }
 ```
 
-**Why Singapore Timezone?**
-- Per copilot-instructions.md: ALL date/time operations use `Asia/Singapore`
-- Applies to: due dates, reminders, recurring todos, holiday calculations
-- Centralized in `lib/timezone.ts` to prevent `new Date()` usage
+**Usage Example:**
+```typescript
+import { getSingaporeNow, formatSingaporeDate } from '@/lib/timezone';
 
----
+// Creating a todo with current timestamp
+const now = getSingaporeNow().toISOString(); // "2025-11-12T10:15:30+08:00"
+
+// Displaying a due date
+const displayDate = formatSingaporeDate("2025-11-15T14:30:00+08:00"); 
+// "Nov 15, 2025, 2:30 PM SGT"
+```
 
 ## UI Components
 
-### Main Todo List Component (app/page.tsx - excerpt)
+### Main Todo Page Component
 
-**Note**: Per copilot-instructions.md, main todo page is a large (~2200 lines) monolithic client component handling all features. This excerpt shows CRUD-specific patterns.
+**File: `app/page.tsx`**
 
 ```typescript
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Todo, CreateTodoInput, UpdateTodoInput } from '@/lib/db';
-import { formatSingaporeDate, getSingaporeNow } from '@/lib/timezone';
+import { getSingaporeNow, formatSingaporeDate, isPastDue } from '@/lib/timezone';
 
-export default function TodoPage() {
+interface Todo {
+  id: number;
+  title: string;
+  completed: boolean;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export default function TodosPage() {
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [newTodoTitle, setNewTodoTitle] = useState('');
-  const [newTodoDueDate, setNewTodoDueDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newTodoTitle, setNewTodoTitle] = useState('');
+  const [newTodoDueDate, setNewTodoDueDate] = useState<string>('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
-  const [editDueDate, setEditDueDate] = useState('');
+  const [editDueDate, setEditDueDate] = useState<string>('');
 
   // Fetch todos on mount
   useEffect(() => {
@@ -763,189 +661,141 @@ export default function TodoPage() {
       const res = await fetch('/api/todos');
       if (!res.ok) throw new Error('Failed to fetch todos');
       const data = await res.json();
-      setTodos(data.todos);
+      setTodos(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError('Failed to load todos. Please refresh the page.');
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Create todo with optimistic update pattern
-  const handleCreateTodo = async (e: React.FormEvent) => {
+  const createTodo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTodoTitle.trim()) {
-      setError('Title is required');
-      return;
-    }
+    if (!newTodoTitle.trim()) return;
 
-    if (newTodoTitle.length > 500) {
-      setError('Title must be 500 characters or less');
-      return;
-    }
-
-    const tempId = Date.now(); // Temporary ID for optimistic update
-    const optimisticTodo: Todo = {
+    // Optimistic update
+    const tempId = Date.now();
+    const tempTodo: Todo = {
       id: tempId,
-      user_id: 0, // Will be set by server
       title: newTodoTitle.trim(),
-      completed_at: null,
+      completed: false,
       due_date: newTodoDueDate || null,
       created_at: getSingaporeNow().toISOString(),
       updated_at: getSingaporeNow().toISOString(),
-      priority: null,
-      recurrence_pattern: null,
-      reminder_minutes: null,
-      last_notification_sent: null
     };
-
-    // Optimistic update - show immediately
-    setTodos(prev => [optimisticTodo, ...prev]);
+    setTodos([tempTodo, ...todos]);
     setNewTodoTitle('');
     setNewTodoDueDate('');
-    setError(null);
 
     try {
       const res = await fetch('/api/todos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: newTodoTitle.trim(),
-          due_date: newTodoDueDate || null
-        })
+          title: tempTodo.title,
+          due_date: tempTodo.due_date,
+        }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to create todo');
-      }
+      if (!res.ok) throw new Error('Failed to create todo');
 
-      const createdTodo: Todo = await res.json();
-      
-      // Replace optimistic todo with real server-confirmed one
+      const createdTodo = await res.json();
+      // Replace temp todo with real one
       setTodos(prev => prev.map(t => t.id === tempId ? createdTodo : t));
     } catch (err) {
-      // Rollback optimistic update on error
+      // Rollback optimistic update
       setTodos(prev => prev.filter(t => t.id !== tempId));
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError('Failed to create todo. Please try again.');
+      console.error(err);
     }
   };
 
-  // Toggle completion with optimistic update
-  const handleToggleComplete = async (todo: Todo) => {
-    const newCompletedAt = todo.completed_at 
-      ? null 
-      : getSingaporeNow().toISOString();
-
+  const updateTodo = async (id: number, updates: Partial<Todo>) => {
     // Optimistic update
+    const originalTodos = [...todos];
     setTodos(prev => prev.map(t => 
-      t.id === todo.id ? { ...t, completed_at: newCompletedAt } : t
+      t.id === id ? { ...t, ...updates, updated_at: getSingaporeNow().toISOString() } : t
     ));
 
     try {
-      const res = await fetch(`/api/todos/${todo.id}`, {
+      const res = await fetch(`/api/todos/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed_at: newCompletedAt })
+        body: JSON.stringify(updates),
       });
 
       if (!res.ok) throw new Error('Failed to update todo');
-      
-      const updatedTodo: Todo = await res.json();
-      setTodos(prev => prev.map(t => t.id === todo.id ? updatedTodo : t));
+
+      const updatedTodo = await res.json();
+      setTodos(prev => prev.map(t => t.id === id ? updatedTodo : t));
     } catch (err) {
-      // Rollback on error
-      setTodos(prev => prev.map(t => 
-        t.id === todo.id ? { ...t, completed_at: todo.completed_at } : t
-      ));
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      // Rollback optimistic update
+      setTodos(originalTodos);
+      setError('Failed to update todo. Please try again.');
+      console.error(err);
     }
   };
 
-  // Start editing
-  const handleStartEdit = (todo: Todo) => {
+  const deleteTodo = async (id: number) => {
+    if (!confirm('Delete this todo? This cannot be undone.')) return;
+
+    // Optimistic update
+    const originalTodos = [...todos];
+    setTodos(prev => prev.filter(t => t.id !== id));
+
+    try {
+      const res = await fetch(`/api/todos/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) throw new Error('Failed to delete todo');
+    } catch (err) {
+      // Rollback optimistic update
+      setTodos(originalTodos);
+      setError('Failed to delete todo. Please try again.');
+      console.error(err);
+    }
+  };
+
+  const startEdit = (todo: Todo) => {
     setEditingId(todo.id);
     setEditTitle(todo.title);
     setEditDueDate(todo.due_date || '');
   };
 
-  // Save edit with optimistic update
-  const handleSaveEdit = async (todoId: number) => {
-    if (!editTitle.trim()) {
-      setError('Title is required');
-      return;
-    }
+  const saveEdit = async () => {
+    if (!editingId || !editTitle.trim()) return;
 
-    if (editTitle.length > 500) {
-      setError('Title must be 500 characters or less');
-      return;
-    }
+    await updateTodo(editingId, {
+      title: editTitle.trim(),
+      due_date: editDueDate || null,
+    });
 
-    const originalTodo = todos.find(t => t.id === todoId);
-    
-    // Optimistic update
-    setTodos(prev => prev.map(t => 
-      t.id === todoId 
-        ? { ...t, title: editTitle.trim(), due_date: editDueDate || null }
-        : t
-    ));
     setEditingId(null);
-
-    try {
-      const res = await fetch(`/api/todos/${todoId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: editTitle.trim(),
-          due_date: editDueDate || null
-        })
-      });
-
-      if (!res.ok) throw new Error('Failed to update todo');
-      
-      const updatedTodo: Todo = await res.json();
-      setTodos(prev => prev.map(t => t.id === todoId ? updatedTodo : t));
-      setError(null);
-    } catch (err) {
-      // Rollback on error
-      if (originalTodo) {
-        setTodos(prev => prev.map(t => t.id === todoId ? originalTodo : t));
-      }
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    }
+    setEditTitle('');
+    setEditDueDate('');
   };
 
-  // Delete todo with optimistic update
-  const handleDelete = async (todoId: number) => {
-    if (!confirm('Are you sure you want to delete this todo?')) return;
-
-    const originalTodos = [...todos];
-    
-    // Optimistic update - remove immediately
-    setTodos(prev => prev.filter(t => t.id !== todoId));
-
-    try {
-      const res = await fetch(`/api/todos/${todoId}`, {
-        method: 'DELETE'
-      });
-
-      if (!res.ok) throw new Error('Failed to delete todo');
-      setError(null);
-    } catch (err) {
-      // Rollback on error
-      setTodos(originalTodos);
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    }
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditTitle('');
+    setEditDueDate('');
   };
 
-  if (loading) return <div className="p-4">Loading todos...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">Loading todos...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-6">My Todos</h1>
 
-      {/* Error Display */}
       {error && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           {error}
@@ -953,592 +803,740 @@ export default function TodoPage() {
       )}
 
       {/* Create Todo Form */}
-      <form onSubmit={handleCreateTodo} className="mb-8 flex gap-2">
+      <form onSubmit={createTodo} className="mb-8 flex gap-2">
         <input
           type="text"
           value={newTodoTitle}
           onChange={(e) => setNewTodoTitle(e.target.value)}
-          placeholder="What needs to be done?"
-          className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Add new todo..."
           maxLength={500}
+          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <input
-          type="date"
+          type="datetime-local"
           value={newTodoDueDate}
           onChange={(e) => setNewTodoDueDate(e.target.value)}
-          className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
           type="submit"
-          className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+          disabled={!newTodoTitle.trim()}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           Add
         </button>
       </form>
 
-      {/* Todo List */}
-      <div className="space-y-2">
-        {todos.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No todos yet. Create one above!</p>
-        ) : (
-          todos.map(todo => (
+      {/* Todos List */}
+      {todos.length === 0 ? (
+        <div className="text-center text-gray-500 py-12">
+          No todos yet. Create your first one!
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {todos.map(todo => (
             <div
               key={todo.id}
-              className="flex items-center gap-3 p-4 bg-white border rounded-lg hover:shadow-md transition"
+              className={`p-4 border rounded-lg ${
+                todo.completed ? 'bg-gray-50 border-gray-300' : 'bg-white border-gray-200'
+              }`}
             >
-              {/* Checkbox */}
-              <input
-                type="checkbox"
-                checked={!!todo.completed_at}
-                onChange={() => handleToggleComplete(todo)}
-                className="w-5 h-5 cursor-pointer"
-              />
-
-              {/* Todo Content */}
               {editingId === todo.id ? (
-                <>
+                // Edit Mode
+                <div className="space-y-2">
                   <input
                     type="text"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
-                    className="flex-1 px-2 py-1 border rounded"
                     maxLength={500}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={editDueDate}
                     onChange={(e) => setEditDueDate(e.target.value)}
-                    className="px-2 py-1 border rounded"
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <button
-                    onClick={() => handleSaveEdit(todo.id)}
-                    className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditingId(null)}
-                    className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
-                  >
-                    Cancel
-                  </button>
-                </>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveEdit}
+                      className="px-4 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="px-4 py-1 bg-gray-400 text-white rounded hover:bg-gray-500"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <>
+                // View Mode
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={todo.completed}
+                    onChange={(e) => updateTodo(todo.id, { completed: e.target.checked })}
+                    className="mt-1 w-5 h-5 cursor-pointer"
+                  />
                   <div className="flex-1">
-                    <p className={`${todo.completed_at ? 'line-through text-gray-500' : ''}`}>
+                    <div className={`text-lg ${todo.completed ? 'line-through text-gray-500' : ''}`}>
                       {todo.title}
-                    </p>
+                    </div>
                     {todo.due_date && (
-                      <p className="text-sm text-gray-500">
-                        Due: {formatSingaporeDate(todo.due_date, 'date')}
-                      </p>
+                      <div className={`text-sm mt-1 ${
+                        isPastDue(todo.due_date) && !todo.completed
+                          ? 'text-red-600 font-semibold'
+                          : 'text-gray-600'
+                      }`}>
+                        Due: {formatSingaporeDate(todo.due_date)}
+                      </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => handleStartEdit(todo)}
-                    className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(todo.id)}
-                    className="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
-                  >
-                    Delete
-                  </button>
-                </>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => startEdit(todo)}
+                      className="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteTodo(todo.id)}
+                      className="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 ```
 
-**Key Patterns from copilot-instructions.md:**
-- Client component (`'use client'`) - never import `lib/db.ts` directly
-- All API calls use fetch with proper error handling
-- Optimistic UI updates for responsive feel
-- Singapore timezone via `getSingaporeNow()` and `formatSingaporeDate()`
-- State management via React hooks (no external state library)
-- Monolithic pattern - keep additions in this file
+### Key UI Patterns
 
----
+1. **Optimistic Updates**: UI updates immediately, with rollback on failure
+2. **Loading States**: Skeleton screens or spinners during data fetch
+3. **Error Display**: Toast notifications or inline error messages
+4. **Form Validation**: Client-side validation before API calls
+5. **Confirmation Dialogs**: For destructive actions (delete)
+6. **Responsive Design**: Mobile-friendly with Tailwind CSS
 
 ## Edge Cases
 
-### 1. Empty Title
-**Scenario**: User tries to create todo with empty or whitespace-only title  
-**Handling**: 
-- Client: Trim input and show validation error
-- Server: Return 400 with "Title is required"
+### 1. Empty Title Handling
+**Scenario**: User tries to create a todo with whitespace-only title
+- **Frontend**: Disable submit button if `title.trim()` is empty
+- **Backend**: Return 400 error if title is empty after trimming
+- **Expected**: User sees disabled button, or error message if they bypass frontend validation
 
-### 2. Title Length Exceeding 500 Characters
-**Scenario**: User pastes very long text as title  
-**Handling**:
-- Client: maxLength attribute on input + validation
-- Server: CHECK constraint on database + 400 error response
+### 2. Title Length Limit
+**Scenario**: User enters title longer than 500 characters
+- **Frontend**: `maxLength={500}` on input field, show character counter near limit
+- **Backend**: Validate length and return 400 error
+- **Database**: `CHECK(length(title) <= 500)` constraint
+- **Expected**: User cannot exceed 500 characters in input; backend rejects if bypassed
 
 ### 3. Invalid Due Date Format
-**Scenario**: User manually enters malformed date (e.g., "2025-13-45")  
-**Handling**:
-- Client: Use native date picker to prevent invalid input
-- Server: Validate with `isValidDateFormat()` function, return 400
+**Scenario**: API receives malformed date string (e.g., "not-a-date")
+- **Backend**: Attempt to parse with Luxon, return 400 if invalid
+- **Expected**: API returns error "Invalid due date format"
 
-### 4. Past Due Dates
-**Scenario**: User sets due date in the past  
-**Handling**: Allow it (user may be recording past tasks)
+### 4. Due Date in the Past
+**Scenario**: User sets due date to yesterday
+- **System**: Allow creation (user may be logging past tasks)
+- **UI**: Mark as "Overdue" with red styling
+- **Expected**: Todo created successfully, displayed with overdue indicator
 
-### 5. Concurrent Edits
-**Scenario**: User has two browser tabs, edits same todo in both  
-**Handling**: Last write wins (no conflict resolution in v1)
+### 5. Concurrent Updates
+**Scenario**: User edits todo in two browser tabs simultaneously
+- **System**: Last write wins (standard for this application)
+- **No**: Optimistic locking or conflict resolution in this version
+- **Expected**: Second save overwrites first; user may see unexpected state
 
-### 6. Network Failures During Optimistic Updates
-**Scenario**: User creates todo but API call fails  
-**Handling**:
-- Show error message
-- Remove optimistic todo from UI
-- Allow user to retry
+### 6. Deleting Non-Existent Todo
+**Scenario**: User deletes a todo that was already deleted in another tab
+- **API**: Returns 404 Not Found
+- **Frontend**: Handles gracefully, removes from UI if present
+- **Expected**: No error shown to user, todo already gone
 
-### 7. Session Expiry During Operation
-**Scenario**: JWT expires while user is editing  
-**Handling**:
-- API returns 401 Unauthorized
-- Middleware redirects to login
-- User loses unsaved changes (warn before redirect in future)
+### 7. Network Timeout During Creation
+**Scenario**: Slow network causes request timeout
+- **Frontend**: Optimistic update shows todo immediately
+- **Timeout**: After 30 seconds, rollback and show error
+- **Expected**: User sees "Failed to create todo. Please try again."
 
-### 8. Deleting Non-Existent Todo
-**Scenario**: Todo deleted in another tab, user clicks delete here  
-**Handling**:
-- Server returns 404
-- Client shows error but doesn't crash
-- Remove from client state anyway (idempotent)
+### 8. XSS in Todo Title
+**Scenario**: User enters `<script>alert('xss')</script>` as title
+- **React**: Automatically escapes HTML in JSX
+- **Storage**: Stored as-is in database (raw string)
+- **Display**: Rendered as text, not executed
+- **Expected**: Script tag displayed as text, not executed
 
-### 9. Special Characters in Title
-**Scenario**: User enters emojis, Unicode, HTML, etc.  
-**Handling**: Allow all Unicode characters, no sanitization needed (SQLite stores as-is, React escapes on render)
+### 9. SQL Injection Attempt
+**Scenario**: User enters `'; DROP TABLE todos; --` as title
+- **Protection**: Prepared statements with parameterized queries
+- **Result**: String stored safely in database
+- **Expected**: Title stored literally, no SQL execution
 
-### 10. Rapid Successive Operations
-**Scenario**: User clicks "Add" button 10 times quickly  
-**Handling**:
-- Each click creates separate API call
-- All should succeed and create separate todos
-- Consider debouncing in future if becomes issue
+### 10. Extremely Long Todo List
+**Scenario**: User has 10,000+ todos
+- **Current**: All loaded at once (performance issue)
+- **Mitigation**: Pagination or infinite scroll in future version
+- **Expected**: Page may be slow; out of scope for this PRP
 
-### 11. Database Lock (SQLite Concurrent Writes)
-**Scenario**: Multiple API requests try to write simultaneously  
-**Handling**:
-- better-sqlite3 handles locking automatically
-- Failed operations throw exception
-- Return 500 error to client
+### 11. Authentication Token Expiry
+**Scenario**: User's session expires while viewing todos
+- **API**: Returns 401 Unauthorized
+- **Frontend**: Redirect to login page
+- **Expected**: User must re-authenticate
 
-### 12. Very Large Number of Todos
-**Scenario**: User has 10,000+ todos  
-**Handling**:
-- No pagination in v1 (return all)
-- Performance may degrade
-- Future: Add pagination/virtual scrolling
-
----
+### 12. Database Locked
+**Scenario**: SQLite database locked by another process
+- **Better-sqlite3**: Throws error
+- **API**: Returns 500 error
+- **Expected**: User sees "Failed to [action] todo. Please try again."
 
 ## Acceptance Criteria
 
 ### Functional Requirements
 
-✅ **AC-1**: User can create a new todo with only a title (1-500 chars)  
-✅ **AC-2**: User can create a todo with title and due date  
-✅ **AC-3**: Due dates must be in YYYY-MM-DD format  
-✅ **AC-4**: User can view all their todos sorted by creation date (newest first)  
-✅ **AC-5**: User can toggle todo completion status via checkbox  
-✅ **AC-6**: Completed todos show strikethrough text  
-✅ **AC-7**: User can edit todo title and due date  
-✅ **AC-8**: User can delete a todo with confirmation dialog  
-✅ **AC-9**: All date/time operations use Singapore timezone (Asia/Singapore)  
-✅ **AC-10**: Optimistic UI updates occur before server confirmation  
+✅ **FR-1: Create Todo**
+- Given: User is authenticated
+- When: User enters title "Buy groceries" and clicks Add
+- Then: Todo appears in list immediately with generated ID
 
-### Technical Requirements
+✅ **FR-2: Create Todo with Due Date**
+- Given: User is authenticated
+- When: User enters title "Meeting" and sets due date to "Nov 15, 2025, 2:00 PM"
+- Then: Todo appears with due date displayed as "Due: Nov 15, 2025, 2:00 PM SGT"
 
-✅ **AC-11**: All API routes require valid JWT session cookie  
-✅ **AC-12**: Database enforces title length constraint (1-500 chars)  
-✅ **AC-13**: Database uses foreign key cascade for user deletion  
-✅ **AC-14**: Server validates all input before database operations  
-✅ **AC-15**: Client handles API errors gracefully with rollback  
-✅ **AC-16**: Timestamps stored as ISO 8601 strings  
-✅ **AC-17**: Database operations use prepared statements (SQL injection prevention)  
+✅ **FR-3: Title Validation**
+- Given: User tries to create todo with empty title
+- When: User clicks Add
+- Then: Add button is disabled, todo not created
 
-### User Experience
+✅ **FR-4: Title Length Limit**
+- Given: User enters 501-character title
+- When: User submits form
+- Then: API returns 400 error with message "Title must be 500 characters or less"
 
-✅ **AC-18**: Create form clears after successful submission  
-✅ **AC-19**: Error messages display in red alert box  
-✅ **AC-20**: Loading state shown while fetching todos  
-✅ **AC-21**: Edit mode transforms inline (no modal)  
-✅ **AC-22**: Cancel button in edit mode discards changes  
-✅ **AC-23**: Empty state message shown when no todos exist  
+✅ **FR-5: View All Todos**
+- Given: User has 3 todos in database
+- When: User loads main page
+- Then: All 3 todos displayed in descending creation order (newest first)
 
----
+✅ **FR-6: Empty State**
+- Given: User has no todos
+- When: User loads main page
+- Then: Message "No todos yet. Create your first one!" displayed
+
+✅ **FR-7: Edit Todo Title**
+- Given: Todo "Buy milk" exists
+- When: User clicks Edit, changes to "Buy almond milk", clicks Save
+- Then: Todo updates to "Buy almond milk" with new updated_at timestamp
+
+✅ **FR-8: Edit Todo Due Date**
+- Given: Todo with due date "Nov 15" exists
+- When: User edits due date to "Nov 16"
+- Then: Todo updates with new due date
+
+✅ **FR-9: Remove Due Date**
+- Given: Todo with due date exists
+- When: User clears due date field and saves
+- Then: Todo updates with due_date set to null
+
+✅ **FR-10: Complete Todo**
+- Given: Incomplete todo exists
+- When: User clicks checkbox
+- Then: Todo marked as complete, checkbox filled, text gets strikethrough
+
+✅ **FR-11: Uncomplete Todo**
+- Given: Completed todo exists
+- When: User unchecks checkbox
+- Then: Todo marked as incomplete, checkbox empty, strikethrough removed
+
+✅ **FR-12: Delete Todo**
+- Given: Todo "Old task" exists
+- When: User clicks Delete, confirms in dialog
+- Then: Todo removed from list and database
+
+✅ **FR-13: Cancel Delete**
+- Given: User clicks Delete on a todo
+- When: User clicks Cancel in confirmation dialog
+- Then: Todo remains in list, no changes made
+
+✅ **FR-14: Optimistic Create**
+- Given: User creates todo "New task"
+- When: API call is in progress
+- Then: Todo appears in UI immediately before API response
+
+✅ **FR-15: Optimistic Update**
+- Given: User completes a todo
+- When: API call is in progress
+- Then: Checkbox fills and strikethrough applies immediately
+
+✅ **FR-16: Optimistic Delete**
+- Given: User deletes a todo
+- When: API call is in progress
+- Then: Todo disappears from UI immediately
+
+✅ **FR-17: Rollback on Create Failure**
+- Given: API returns 500 error during todo creation
+- When: Optimistic update was shown
+- Then: Todo removed from UI, error message displayed
+
+✅ **FR-18: Rollback on Update Failure**
+- Given: API returns 404 error during todo update
+- When: Optimistic update was shown
+- Then: Todo reverts to original state, error message displayed
+
+✅ **FR-19: Rollback on Delete Failure**
+- Given: API returns error during todo deletion
+- When: Optimistic update removed todo from UI
+- Then: Todo reappears in UI, error message displayed
+
+✅ **FR-20: Singapore Timezone Display**
+- Given: Todo has due_date "2025-11-15T14:30:00+08:00"
+- When: User views todo
+- Then: Due date displays as "Nov 15, 2025, 2:30 PM SGT"
+
+### Non-Functional Requirements
+
+✅ **NFR-1: Response Time**
+- API responses complete within 200ms for database operations on local development
+
+✅ **NFR-2: Concurrent User Support**
+- Application handles multiple authenticated users with isolated data (user_id filtering)
+
+✅ **NFR-3: Data Persistence**
+- All todo data persists in SQLite database, survives server restarts
+
+✅ **NFR-4: Security**
+- All API endpoints require authentication
+- SQL injection prevented via prepared statements
+- XSS prevented via React's automatic escaping
+
+✅ **NFR-5: Error Recovery**
+- Application handles database errors gracefully without crashing
+- Network errors trigger user-friendly error messages
 
 ## Testing Requirements
 
-### Unit Tests (Database Layer)
+### Unit Tests
+
+**File: `__tests__/lib/db.test.ts`**
 
 ```typescript
-// tests/unit/db-todos.test.ts
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { todoDB } from '@/lib/db';
+import Database from 'better-sqlite3';
 
-describe('todoDB.create', () => {
-  test('creates todo with valid title only', () => {
-    const todo = todoDB.create(1, { title: 'Test todo' });
-    expect(todo.title).toBe('Test todo');
-    expect(todo.user_id).toBe(1);
-    expect(todo.due_date).toBeNull();
+describe('todoDB', () => {
+  let testDb: Database.Database;
+  const testUserId = 1;
+
+  beforeEach(() => {
+    // Use in-memory database for tests
+    testDb = new Database(':memory:');
+    // Initialize schema (same as lib/db.ts)
   });
 
-  test('creates todo with title and due date', () => {
-    const todo = todoDB.create(1, { 
-      title: 'Test', 
-      due_date: '2025-12-31' 
+  afterEach(() => {
+    testDb.close();
+  });
+
+  describe('create', () => {
+    it('should create a todo with title only', () => {
+      const todo = todoDB.create(testUserId, { title: 'Test todo' });
+      expect(todo.title).toBe('Test todo');
+      expect(todo.completed).toBe(false);
+      expect(todo.due_date).toBeNull();
+      expect(todo.user_id).toBe(testUserId);
     });
-    expect(todo.due_date).toBe('2025-12-31');
-  });
 
-  test('throws error for empty title', () => {
-    expect(() => todoDB.create(1, { title: '' }))
-      .toThrow();
-  });
-
-  test('throws error for title > 500 chars', () => {
-    const longTitle = 'a'.repeat(501);
-    expect(() => todoDB.create(1, { title: longTitle }))
-      .toThrow();
-  });
-});
-
-describe('todoDB.update', () => {
-  test('updates title only', () => {
-    const todo = todoDB.create(1, { title: 'Original' });
-    const updated = todoDB.update(1, todo.id, { title: 'Updated' });
-    expect(updated?.title).toBe('Updated');
-  });
-
-  test('toggles completion status', () => {
-    const todo = todoDB.create(1, { title: 'Test' });
-    const completed = todoDB.update(1, todo.id, { 
-      completed_at: new Date().toISOString() 
+    it('should create a todo with title and due date', () => {
+      const dueDate = '2025-11-15T14:30:00+08:00';
+      const todo = todoDB.create(testUserId, { title: 'Meeting', due_date: dueDate });
+      expect(todo.due_date).toBe(dueDate);
     });
-    expect(completed?.completed_at).not.toBeNull();
+
+    it('should throw error for title longer than 500 characters', () => {
+      const longTitle = 'a'.repeat(501);
+      expect(() => todoDB.create(testUserId, { title: longTitle })).toThrow();
+    });
   });
 
-  test('returns null for non-existent todo', () => {
-    const result = todoDB.update(1, 99999, { title: 'Test' });
-    expect(result).toBeNull();
-  });
-});
+  describe('getAll', () => {
+    it('should return empty array when no todos exist', () => {
+      const todos = todoDB.getAll(testUserId);
+      expect(todos).toEqual([]);
+    });
 
-describe('todoDB.delete', () => {
-  test('deletes existing todo', () => {
-    const todo = todoDB.create(1, { title: 'To delete' });
-    const result = todoDB.delete(1, todo.id);
-    expect(result).toBe(true);
-    expect(todoDB.getById(1, todo.id)).toBeNull();
+    it('should return todos in descending creation order', () => {
+      todoDB.create(testUserId, { title: 'First' });
+      todoDB.create(testUserId, { title: 'Second' });
+      todoDB.create(testUserId, { title: 'Third' });
+
+      const todos = todoDB.getAll(testUserId);
+      expect(todos[0].title).toBe('Third');
+      expect(todos[2].title).toBe('First');
+    });
+
+    it('should only return todos for specified user', () => {
+      todoDB.create(1, { title: 'User 1 todo' });
+      todoDB.create(2, { title: 'User 2 todo' });
+
+      const user1Todos = todoDB.getAll(1);
+      expect(user1Todos).toHaveLength(1);
+      expect(user1Todos[0].title).toBe('User 1 todo');
+    });
   });
 
-  test('returns false for non-existent todo', () => {
-    const result = todoDB.delete(1, 99999);
-    expect(result).toBe(false);
+  describe('update', () => {
+    it('should update todo title', () => {
+      const todo = todoDB.create(testUserId, { title: 'Original' });
+      const updated = todoDB.update(testUserId, todo.id, { title: 'Updated' });
+      expect(updated?.title).toBe('Updated');
+    });
+
+    it('should update completed status', () => {
+      const todo = todoDB.create(testUserId, { title: 'Task' });
+      const updated = todoDB.update(testUserId, todo.id, { completed: true });
+      expect(updated?.completed).toBe(true);
+    });
+
+    it('should return null for non-existent todo', () => {
+      const updated = todoDB.update(testUserId, 999, { title: 'New' });
+      expect(updated).toBeNull();
+    });
+
+    it('should not update todo belonging to different user', () => {
+      const todo = todoDB.create(1, { title: 'User 1 todo' });
+      const updated = todoDB.update(2, todo.id, { title: 'Hacked' });
+      expect(updated).toBeNull();
+    });
+  });
+
+  describe('delete', () => {
+    it('should delete existing todo', () => {
+      const todo = todoDB.create(testUserId, { title: 'To delete' });
+      const deleted = todoDB.delete(testUserId, todo.id);
+      expect(deleted).toBe(true);
+      expect(todoDB.getById(testUserId, todo.id)).toBeNull();
+    });
+
+    it('should return false for non-existent todo', () => {
+      const deleted = todoDB.delete(testUserId, 999);
+      expect(deleted).toBe(false);
+    });
+
+    it('should not delete todo belonging to different user', () => {
+      const todo = todoDB.create(1, { title: 'User 1 todo' });
+      const deleted = todoDB.delete(2, todo.id);
+      expect(deleted).toBe(false);
+    });
   });
 });
 ```
 
 ### E2E Tests (Playwright)
 
-**Test File**: `tests/02-todo-crud.spec.ts`
-
-**Configuration Note**: Per copilot-instructions.md, tests use:
-- Virtual WebAuthn authenticators (configured in `playwright.config.ts`)
-- `timezoneId: 'Asia/Singapore'` to match app timezone
-- Helper class `tests/helpers.ts` for reusable methods
+**File: `tests/02-todo-crud.spec.ts`**
 
 ```typescript
-// tests/02-todo-crud.spec.ts
-
 import { test, expect } from '@playwright/test';
-import { TestHelper } from './helpers';
+import { authenticateUser } from './helpers';
 
 test.describe('Todo CRUD Operations', () => {
-  let helper: TestHelper;
-
   test.beforeEach(async ({ page }) => {
-    helper = new TestHelper(page);
-    await helper.registerAndLogin('testuser');
+    // Authenticate user with virtual WebAuthn
+    await authenticateUser(page);
+    await page.goto('/');
   });
 
-  test('creates new todo with title only', async ({ page }) => {
-    await page.fill('[placeholder="What needs to be done?"]', 'Buy groceries');
+  test('should create a todo with title only', async ({ page }) => {
+    const todoTitle = 'Buy groceries';
+
+    // Type title and submit
+    await page.fill('input[placeholder="Add new todo..."]', todoTitle);
     await page.click('button:has-text("Add")');
 
-    await expect(page.locator('text=Buy groceries')).toBeVisible();
+    // Verify todo appears in list
+    await expect(page.locator(`text=${todoTitle}`)).toBeVisible();
   });
 
-  test('creates todo with title and due date', async ({ page }) => {
-    await page.fill('[placeholder="What needs to be done?"]', 'Submit report');
-    await page.fill('input[type="date"]', '2025-11-20');
+  test('should create a todo with title and due date', async ({ page }) => {
+    const todoTitle = 'Team meeting';
+    const dueDate = '2025-11-15T14:30';
+
+    await page.fill('input[placeholder="Add new todo..."]', todoTitle);
+    await page.fill('input[type="datetime-local"]', dueDate);
     await page.click('button:has-text("Add")');
 
-    await expect(page.locator('text=Submit report')).toBeVisible();
-    await expect(page.locator('text=Due: Nov 20, 2025')).toBeVisible();
+    await expect(page.locator(`text=${todoTitle}`)).toBeVisible();
+    await expect(page.locator('text=/Due:.*Nov 15, 2025.*SGT/')).toBeVisible();
   });
 
-  test('shows error for empty title', async ({ page }) => {
+  test('should not create todo with empty title', async ({ page }) => {
+    const addButton = page.locator('button:has-text("Add")');
+
+    // Button should be disabled when input is empty
+    await expect(addButton).toBeDisabled();
+
+    // Type spaces only
+    await page.fill('input[placeholder="Add new todo..."]', '   ');
+    await expect(addButton).toBeDisabled();
+  });
+
+  test('should display all todos in descending order', async ({ page }) => {
+    // Create multiple todos
+    await page.fill('input[placeholder="Add new todo..."]', 'First todo');
     await page.click('button:has-text("Add")');
-    await expect(page.locator('text=Title is required')).toBeVisible();
-  });
+    
+    await page.fill('input[placeholder="Add new todo..."]', 'Second todo');
+    await page.click('button:has-text("Add")');
+    
+    await page.fill('input[placeholder="Add new todo..."]', 'Third todo');
+    await page.click('button:has-text("Add")');
 
-  test('toggles todo completion', async ({ page }) => {
-    await helper.createTodo('Complete task');
-    
-    const checkbox = page.locator('input[type="checkbox"]').first();
-    await checkbox.click();
-    
-    await expect(page.locator('text=Complete task').first())
-      .toHaveClass(/line-through/);
-  });
-
-  test('edits todo title', async ({ page }) => {
-    await helper.createTodo('Original title');
-    
-    await page.click('button:has-text("Edit")');
-    await page.fill('input[type="text"]', 'Updated title');
-    await page.click('button:has-text("Save")');
-    
-    await expect(page.locator('text=Updated title')).toBeVisible();
-    await expect(page.locator('text=Original title')).not.toBeVisible();
-  });
-
-  test('cancels edit without saving', async ({ page }) => {
-    await helper.createTodo('Original title');
-    
-    await page.click('button:has-text("Edit")');
-    await page.fill('input[type="text"]', 'Changed title');
-    await page.click('button:has-text("Cancel")');
-    
-    await expect(page.locator('text=Original title')).toBeVisible();
-    await expect(page.locator('text=Changed title')).not.toBeVisible();
-  });
-
-  test('deletes todo with confirmation', async ({ page }) => {
-    await helper.createTodo('To be deleted');
-    
-    page.on('dialog', dialog => dialog.accept());
-    await page.click('button:has-text("Delete")');
-    
-    await expect(page.locator('text=To be deleted')).not.toBeVisible();
-  });
-
-  test('displays empty state when no todos', async ({ page }) => {
-    await expect(page.locator('text=No todos yet')).toBeVisible();
-  });
-
-  test('sorts todos by creation date descending', async ({ page }) => {
-    await helper.createTodo('First todo');
-    await page.waitForTimeout(100);
-    await helper.createTodo('Second todo');
-    await page.waitForTimeout(100);
-    await helper.createTodo('Third todo');
-    
+    // Verify order (newest first)
     const todos = page.locator('[class*="space-y-2"] > div');
     await expect(todos.nth(0)).toContainText('Third todo');
     await expect(todos.nth(1)).toContainText('Second todo');
     await expect(todos.nth(2)).toContainText('First todo');
   });
 
-  test('persists todos after page refresh', async ({ page }) => {
-    await helper.createTodo('Persistent todo');
-    await page.reload();
-    await expect(page.locator('text=Persistent todo')).toBeVisible();
-  });
-});
-
-test.describe('Todo Validation', () => {
-  test('rejects title over 500 characters', async ({ page }) => {
-    const helper = new TestHelper(page);
-    await helper.registerAndLogin('testuser');
-    
-    const longTitle = 'a'.repeat(501);
-    await page.fill('[placeholder="What needs to be done?"]', longTitle);
+  test('should edit todo title', async ({ page }) => {
+    // Create todo
+    await page.fill('input[placeholder="Add new todo..."]', 'Original title');
     await page.click('button:has-text("Add")');
-    
-    await expect(page.locator('text=Title must be 500 characters or less'))
-      .toBeVisible();
+
+    // Click Edit
+    await page.click('button:has-text("Edit")');
+
+    // Change title
+    const editInput = page.locator('input[value="Original title"]');
+    await editInput.fill('Updated title');
+    await page.click('button:has-text("Save")');
+
+    // Verify update
+    await expect(page.locator('text=Updated title')).toBeVisible();
+    await expect(page.locator('text=Original title')).not.toBeVisible();
   });
 
-  test('accepts special characters and emojis in title', async ({ page }) => {
-    const helper = new TestHelper(page);
-    await helper.registerAndLogin('testuser');
+  test('should cancel edit without saving', async ({ page }) => {
+    await page.fill('input[placeholder="Add new todo..."]', 'Original title');
+    await page.click('button:has-text("Add")');
+
+    await page.click('button:has-text("Edit")');
+    await page.locator('input[value="Original title"]').fill('Changed title');
+    await page.click('button:has-text("Cancel")');
+
+    // Original title should still be visible
+    await expect(page.locator('text=Original title')).toBeVisible();
+    await expect(page.locator('text=Changed title')).not.toBeVisible();
+  });
+
+  test('should complete and uncomplete todo', async ({ page }) => {
+    await page.fill('input[placeholder="Add new todo..."]', 'Task to complete');
+    await page.click('button:has-text("Add")');
+
+    const checkbox = page.locator('input[type="checkbox"]').first();
+    const todoText = page.locator('text=Task to complete').first();
+
+    // Complete todo
+    await checkbox.check();
+    await expect(checkbox).toBeChecked();
+    await expect(todoText).toHaveCSS('text-decoration-line', 'line-through');
+
+    // Uncomplete todo
+    await checkbox.uncheck();
+    await expect(checkbox).not.toBeChecked();
+    await expect(todoText).not.toHaveCSS('text-decoration-line', 'line-through');
+  });
+
+  test('should delete todo after confirmation', async ({ page }) => {
+    await page.fill('input[placeholder="Add new todo..."]', 'Todo to delete');
+    await page.click('button:has-text("Add")');
+
+    // Setup dialog handler to accept
+    page.once('dialog', dialog => dialog.accept());
+
+    await page.click('button:has-text("Delete")');
+
+    // Todo should be removed
+    await expect(page.locator('text=Todo to delete')).not.toBeVisible();
+  });
+
+  test('should not delete todo if confirmation cancelled', async ({ page }) => {
+    await page.fill('input[placeholder="Add new todo..."]', 'Todo to keep');
+    await page.click('button:has-text("Add")');
+
+    // Setup dialog handler to dismiss
+    page.once('dialog', dialog => dialog.dismiss());
+
+    await page.click('button:has-text("Delete")');
+
+    // Todo should still be visible
+    await expect(page.locator('text=Todo to keep')).toBeVisible();
+  });
+
+  test('should show empty state when no todos', async ({ page }) => {
+    await expect(page.locator('text=No todos yet. Create your first one!')).toBeVisible();
+  });
+
+  test('should show error message on network failure', async ({ page }) => {
+    // Intercept API and return error
+    await page.route('/api/todos', route => route.abort('failed'));
+
+    await page.fill('input[placeholder="Add new todo..."]', 'Will fail');
+    await page.click('button:has-text("Add")');
+
+    // Error message should appear
+    await expect(page.locator('text=/Failed to create todo/')).toBeVisible();
+  });
+
+  test('should handle very long todo title', async ({ page }) => {
+    const longTitle = 'a'.repeat(500);
+
+    await page.fill('input[placeholder="Add new todo..."]', longTitle);
+    await page.click('button:has-text("Add")');
+
+    // Should create successfully
+    await expect(page.locator(`text=${longTitle.substring(0, 50)}`)).toBeVisible();
+  });
+
+  test('should display overdue todos in red', async ({ page }) => {
+    // Create todo with past due date
+    const pastDate = '2023-01-01T12:00';
     
-    await helper.createTodo('Buy 🍎 & 🥖 @ store (50% off!)');
-    await expect(page.locator('text=Buy 🍎 & 🥖 @ store (50% off!)')).toBeVisible();
+    await page.fill('input[placeholder="Add new todo..."]', 'Overdue task');
+    await page.fill('input[type="datetime-local"]', pastDate);
+    await page.click('button:has-text("Add")');
+
+    // Due date should be red
+    const dueText = page.locator('text=/Due:.*Jan 1, 2023/');
+    await expect(dueText).toHaveCSS('color', 'rgb(220, 38, 38)'); // red-600
   });
 });
 ```
 
-**Helper Class Reference** (`tests/helpers.ts`):
-```typescript
-export class TestHelper {
-  constructor(private page: Page) {}
+### Manual Test Cases
 
-  async createTodo(title: string, dueDate?: string): Promise<void> {
-    await this.page.fill('[placeholder="What needs to be done?"]', title);
-    if (dueDate) {
-      await this.page.fill('input[type="date"]', dueDate);
-    }
-    await this.page.click('button:has-text("Add")');
-    await this.page.waitForTimeout(100); // Allow optimistic update
-  }
+1. **Accessibility Testing**
+   - Navigate todo list with keyboard (Tab, Enter, Space)
+   - Use screen reader to verify ARIA labels
+   - Check color contrast for due dates and completed todos
 
-  async registerAndLogin(username: string): Promise<void> {
-    // WebAuthn registration/login flow
-    // Implementation details in actual helpers.ts
-  }
-}
-```
+2. **Browser Compatibility**
+   - Test in Chrome, Firefox, Safari, Edge
+   - Verify datetime-local input works across browsers
+   - Check optimistic updates in all browsers
 
----
+3. **Mobile Responsiveness**
+   - Test on iPhone and Android devices
+   - Verify touch interactions for checkboxes and buttons
+   - Check form inputs on mobile keyboards
+
+4. **Performance Testing**
+   - Create 1000 todos, verify page load time
+   - Measure time to complete optimistic update cycle
+   - Check memory usage with large todo list
 
 ## Out of Scope
 
-The following features are **explicitly excluded** from this PRP and will be covered in separate PRPs:
+The following features are explicitly **not included** in this PRP:
 
-❌ Priority levels (high/medium/low) - See PRP-02  
-❌ Recurring todo patterns - See PRP-03  
-❌ Reminder notifications - See PRP-04  
-❌ Subtasks and progress tracking - See PRP-05  
-❌ Tag system - See PRP-06  
-❌ Template creation - See PRP-07  
-❌ Search and filtering - See PRP-08  
-❌ Export/import functionality - See PRP-09  
-❌ Calendar view - See PRP-10  
-❌ Pagination or infinite scroll  
-❌ Bulk operations (select multiple, bulk delete)  
-❌ Undo/redo functionality  
-❌ Todo sharing or collaboration  
-❌ Attachments or file uploads  
-❌ Comments or notes on todos  
-❌ Drag-and-drop reordering  
-❌ Keyboard shortcuts  
-❌ Dark mode  
-❌ Mobile responsive design optimizations  
-
----
+1. **Pagination/Infinite Scroll** - All todos loaded at once
+2. **Search/Filtering** - Covered in separate PRP (08-search-filtering.md)
+3. **Priority Levels** - Covered in separate PRP (02-priority-system.md)
+4. **Recurring Todos** - Covered in separate PRP (03-recurring-todos.md)
+5. **Reminders/Notifications** - Covered in separate PRP (04-reminders-notifications.md)
+6. **Subtasks** - Covered in separate PRP (05-subtasks-progress.md)
+7. **Tags/Labels** - Covered in separate PRP (06-tag-system.md)
+8. **Templates** - Covered in separate PRP (07-template-system.md)
+9. **Calendar View** - Covered in separate PRP (10-calendar-view.md)
+10. **Export/Import** - Covered in separate PRP (09-export-import.md)
+11. **Bulk Operations** - Multi-select and bulk delete/complete
+12. **Undo/Redo** - Action history and reversal
+13. **Collaboration** - Shared todos or team features
+14. **Attachments** - File uploads for todos
+15. **Comments** - Discussion threads on todos
+16. **Activity Log** - Audit trail of changes
+17. **Real-time Sync** - WebSocket updates across devices
+18. **Offline Support** - Service worker and local storage
+19. **Dark Mode** - Theme switching (may be added later)
+20. **Internationalization** - Multi-language support
 
 ## Success Metrics
 
-### Quantitative Metrics
+### User Engagement Metrics
 
-1. **Performance**
-   - Page load time: < 1 second for 100 todos
-   - API response time: < 200ms for CRUD operations
-   - Optimistic update renders: < 50ms
+1. **Todo Creation Rate**
+   - Target: Users create average 5+ todos per day
+   - Measurement: Track POST /api/todos calls per user
 
-2. **Reliability**
-   - Database write success rate: > 99.9%
-   - Optimistic update rollback rate: < 1%
-   - Zero data loss incidents
+2. **Completion Rate**
+   - Target: 70%+ of created todos marked complete within 7 days
+   - Measurement: Compare completed vs created todos
 
-3. **Code Quality**
-   - Test coverage: > 90% for database layer
-   - E2E test pass rate: 100%
-   - Zero SQL injection vulnerabilities
+3. **Error Rate**
+   - Target: <1% of CRUD operations result in errors
+   - Measurement: Monitor API error responses vs successful responses
 
-### Qualitative Metrics
+4. **Optimistic Update Success**
+   - Target: 99%+ of optimistic updates succeed (don't rollback)
+   - Measurement: Track rollback events vs optimistic updates
 
-1. **User Experience**
-   - User can create todo in < 5 seconds
-   - Checkbox toggle feels instant (< 100ms perceived delay)
-   - Error messages are clear and actionable
+### Technical Performance Metrics
 
-2. **Developer Experience**
-   - API is RESTful and predictable
-   - TypeScript types prevent common errors
-   - Database schema is normalized and efficient
+5. **API Response Time**
+   - Target: 95th percentile <200ms for all CRUD endpoints
+   - Measurement: Server-side latency monitoring
 
-3. **Maintainability**
-   - Code follows Next.js 16 best practices
-   - Singapore timezone handling is centralized
-   - Error handling is consistent across routes
+6. **Page Load Time**
+   - Target: Initial load <2 seconds with 100 todos
+   - Measurement: Lighthouse performance score
 
----
+7. **Database Query Performance**
+   - Target: All queries execute <50ms
+   - Measurement: SQLite query execution time logging
 
-## Implementation Checklist
+### Data Quality Metrics
 
-### Phase 1: Database Setup
-- [ ] Create `lib/db.ts` with schema and CRUD operations
-- [ ] Create `lib/timezone.ts` with Singapore timezone utilities
-- [ ] Write unit tests for database layer
-- [ ] Test constraint enforcement (title length, etc.)
+8. **Data Integrity**
+   - Target: 100% of todos have valid user_id, title, and timestamps
+   - Measurement: Database constraint violations = 0
 
-### Phase 2: API Routes
-- [ ] Implement `POST /api/todos` (create)
-- [ ] Implement `GET /api/todos` (list all)
-- [ ] Implement `GET /api/todos/[id]` (get single)
-- [ ] Implement `PUT /api/todos/[id]` (update)
-- [ ] Implement `DELETE /api/todos/[id]` (delete)
-- [ ] Add input validation to all routes
-- [ ] Add authentication checks (session middleware)
-- [ ] Test all endpoints with Postman/curl
+9. **Timezone Accuracy**
+   - Target: 100% of due dates stored in Singapore timezone
+   - Measurement: Audit due_date strings for "+08:00" suffix
 
-### Phase 3: Frontend UI
-- [ ] Create main todo page component (`app/page.tsx`)
-- [ ] Implement create todo form
-- [ ] Implement todo list display
-- [ ] Implement completion toggle
-- [ ] Implement inline edit mode
-- [ ] Implement delete with confirmation
-- [ ] Add optimistic UI updates
-- [ ] Add error handling and rollback
-- [ ] Add loading states
+### User Satisfaction Metrics
 
-### Phase 4: Testing
-- [ ] Write E2E tests for create operations
-- [ ] Write E2E tests for read/list operations
-- [ ] Write E2E tests for update operations
-- [ ] Write E2E tests for delete operations
-- [ ] Write E2E tests for validation errors
-- [ ] Test optimistic update rollback scenarios
-- [ ] Test concurrent operations (multiple tabs)
+10. **Feature Usage**
+    - Target: 80%+ of active users use edit and complete features
+    - Measurement: Track usage of PUT endpoints per user
 
-### Phase 5: Polish
-- [ ] Add empty state messaging
-- [ ] Improve error message clarity
-- [ ] Add form reset after submission
-- [ ] Test with various title lengths
-- [ ] Test with special characters/emojis
-- [ ] Verify Singapore timezone in all scenarios
-- [ ] Performance test with 1000+ todos
+11. **Error Recovery**
+    - Target: 90%+ of users retry after failed operation
+    - Measurement: Track retry attempts after error responses
+
+12. **Session Length**
+    - Target: Average session includes 3+ todo operations
+    - Measurement: Count CRUD operations per session
 
 ---
 
-## Related Documentation
-
-**Critical Reference**: `.github/copilot-instructions.md`
-- Pattern #2: Database Architecture (single source of truth in `lib/db.ts`)
-- Pattern #3: Singapore Timezone (mandatory use of `lib/timezone.ts`)
-- Pattern #4: API Route Patterns (async params in Next.js 16)
-- Pattern #1: Authentication Flow (JWT sessions, will integrate in PRP-11)
-
-**Supporting Documentation**:
-- `USER_GUIDE.md` - Comprehensive 2000+ line user documentation
-- `README.md` - Setup and installation guide
-- `PRPs/README.md` - Index of all Product Requirement Prompts
-
-**File References**:
-- **Database**: `lib/db.ts` (single file, ~700 lines)
-- **Timezone**: `lib/timezone.ts`
-- **Main UI**: `app/page.tsx` (~2200 lines, monolithic client component)
-- **API Routes**: `app/api/todos/route.ts`, `app/api/todos/[id]/route.ts`
-- **Tests**: `tests/02-todo-crud.spec.ts`, `tests/helpers.ts`
-
----
-
-**End of PRP-01: Todo CRUD Operations**
+**Document Version**: 1.0  
+**Last Updated**: November 12, 2025  
+**Dependencies**: Authentication (PRP-11), Timezone utilities (lib/timezone.ts)  
+**Related PRPs**: All feature PRPs depend on this foundation

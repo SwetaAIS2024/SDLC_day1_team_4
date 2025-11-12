@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Todo App',
-  description: 'A Next.js todo application with Singapore timezone support',
+  description: 'A feature-rich todo application with WebAuthn authentication',
 }
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-[#2c3e50] min-h-screen">{children}</body>
     </html>
   )
 }

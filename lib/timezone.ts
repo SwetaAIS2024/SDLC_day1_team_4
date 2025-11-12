@@ -1,164 +1,142 @@
-/**
- * Singapore Timezone Utilities
- * All date/time operations MUST use Asia/Singapore timezone
- * Per copilot-instructions.md Pattern #3
- */
+import { DateTime } from 'luxon';
+import type { RecurrencePattern } from './types';
+
+const SINGAPORE_TIMEZONE = 'Asia/Singapore';
 
 /**
  * Get current date/time in Singapore timezone
- * CRITICAL: ALWAYS use this instead of new Date() for consistency
- * Mandated by copilot-instructions.md pattern #3
+ * USE THIS instead of new Date() throughout the application
  */
-export function getSingaporeNow(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' }));
+export function getSingaporeNow(): DateTime {
+  return DateTime.now().setZone(SINGAPORE_TIMEZONE);
 }
 
 /**
- * Format date for Singapore timezone display
+ * Parse an ISO string as Singapore time
  */
-export function formatSingaporeDate(
-  date: Date | string,
-  format: 'date' | 'datetime' | 'time' = 'date'
-): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-
-  const options: Intl.DateTimeFormatOptions = {
-    timeZone: 'Asia/Singapore',
-    ...(format === 'date' && { year: 'numeric', month: 'short', day: 'numeric' }),
-    ...(format === 'datetime' && {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-    ...(format === 'time' && { hour: '2-digit', minute: '2-digit' }),
-  };
-
-  return d.toLocaleString('en-US', options);
+export function parseSingaporeDate(isoString: string): DateTime {
+  return DateTime.fromISO(isoString, { zone: SINGAPORE_TIMEZONE });
 }
 
 /**
- * Parse date string to Singapore timezone Date object
+ * Format a date for display in Singapore timezone
  */
-export function parseSingaporeDate(dateString: string): Date {
-  return new Date(new Date(dateString).toLocaleString('en-US', { timeZone: 'Asia/Singapore' }));
+export function formatSingaporeDate(date: DateTime | string, format: string = 'MMM d, yyyy, h:mm a'): string {
+  const dt = typeof date === 'string' ? parseSingaporeDate(date) : date;
+  return dt.toFormat(format) + ' SGT';
 }
 
 /**
- * Validate YYYY-MM-DD date format
+ * Check if a date is in the past (Singapore time)
  */
-export function isValidDateFormat(dateString: string): boolean {
-  const regex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!regex.test(dateString)) return false;
-
-  const date = new Date(dateString);
-  return date instanceof Date && !isNaN(date.getTime());
+export function isPastDue(dueDate: string): boolean {
+  const now = getSingaporeNow();
+  const due = parseSingaporeDate(dueDate);
+  return due < now;
 }
-
-/**
- * RECURRING TODOS FUNCTIONALITY (PRP-03)
- * Calculate next due date for recurring todos
- */
-
-import type { RecurrencePattern } from './db';
 
 /**
  * Calculate the next due date for a recurring todo
- * Uses Singapore timezone for all calculations
- * 
- * @param currentDueDate - ISO string of current due date, or null
- * @param pattern - The recurrence pattern
- * @returns ISO string of next due date
+ * @param currentDueDate - ISO string of current due date
+ * @param recurrencePattern - One of 'daily', 'weekly', 'monthly', 'yearly'
+ * @returns ISO string of next due date in Singapore timezone
+ * @throws Error if currentDueDate is null or recurrencePattern is invalid
  */
 export function calculateNextDueDate(
   currentDueDate: string | null,
-  pattern: RecurrencePattern
+  recurrencePattern: RecurrencePattern
 ): string {
   if (!currentDueDate) {
-    // If no due date, calculate from current Singapore time
-    const now = getSingaporeNow();
-    return addRecurrenceOffset(now, pattern).toISOString();
+    throw new Error('Due date required for recurring todos');
   }
-
-  // Parse current due date
-  const current = new Date(currentDueDate);
   
-  switch (pattern) {
+  // Parse current due date in Singapore timezone
+  const currentDate = parseSingaporeDate(currentDueDate);
+  
+  let nextDate: DateTime;
+  
+  switch (recurrencePattern) {
     case 'daily':
-      // Add exactly 1 day
-      current.setDate(current.getDate() + 1);
+      // Add 1 day
+      nextDate = currentDate.plus({ days: 1 });
       break;
-    
     case 'weekly':
-      // Add exactly 7 days
-      current.setDate(current.getDate() + 7);
+      // Add 7 days (1 week)
+      nextDate = currentDate.plus({ weeks: 1 });
       break;
-    
     case 'monthly':
-      // Add 1 month (JavaScript handles overflow automatically)
-      // e.g., Jan 31 + 1 month = Feb 28/29
-      const originalDay = current.getDate();
-      current.setMonth(current.getMonth() + 1);
-      
-      // Log warning if day changed due to month overflow
-      if (current.getDate() !== originalDay) {
-        console.warn(
-          `Monthly recurrence adjusted from day ${originalDay} to ${current.getDate()} ` +
-          `due to month having fewer days`
-        );
-      }
+      // Add 1 month - luxon handles edge cases automatically
+      // (e.g., Jan 31 + 1 month = Feb 28/29 depending on leap year)
+      nextDate = currentDate.plus({ months: 1 });
       break;
-    
     case 'yearly':
-      // Add exactly 1 year
-      // Leap year handling is automatic (Feb 29 2024 -> Feb 28 2025)
-      current.setFullYear(current.getFullYear() + 1);
+      // Add 1 year - luxon handles leap year edge cases
+      // (e.g., Feb 29, 2024 + 1 year = Feb 28, 2025)
+      nextDate = currentDate.plus({ years: 1 });
       break;
-    
     default:
-      throw new Error(`Invalid recurrence pattern: ${pattern}`);
+      throw new Error(`Invalid recurrence pattern: ${recurrencePattern}`);
   }
-
-  return current.toISOString();
+  
+  // Return as ISO string in Singapore timezone
+  return nextDate.toISO()!;
 }
 
 /**
- * Add recurrence offset to a date (helper for no due date scenarios)
+ * Calculate notification time (due date minus reminder minutes)
+ * @param dueDate - ISO string of due date
+ * @param reminderMinutes - Minutes before due date to notify
+ * @returns DateTime of when notification should be sent
  */
-function addRecurrenceOffset(date: Date, pattern: RecurrencePattern): Date {
-  const result = new Date(date);
-  
-  switch (pattern) {
-    case 'daily':
-      result.setDate(result.getDate() + 1);
-      break;
-    case 'weekly':
-      result.setDate(result.getDate() + 7);
-      break;
-    case 'monthly':
-      result.setMonth(result.getMonth() + 1);
-      break;
-    case 'yearly':
-      result.setFullYear(result.getFullYear() + 1);
-      break;
-  }
-  
-  return result;
+export function calculateNotificationTime(
+  dueDate: string,
+  reminderMinutes: number
+): DateTime {
+  const dueDateObj = parseSingaporeDate(dueDate);
+  return dueDateObj.minus({ minutes: reminderMinutes });
 }
 
 /**
- * Get readable description of recurrence pattern
+ * Determine if a notification should be sent now
+ * @param dueDate - ISO string of due date
+ * @param reminderMinutes - Minutes before due date to notify
+ * @param lastNotificationSent - ISO string of last notification sent time, or null
+ * @returns true if notification should be sent
  */
-export function getRecurrenceDescription(pattern: RecurrencePattern | null): string {
-  if (!pattern) return 'Does not repeat';
+export function shouldSendNotification(
+  dueDate: string,
+  reminderMinutes: number,
+  lastNotificationSent: string | null
+): boolean {
+  const now = getSingaporeNow();
+  const notificationTime = calculateNotificationTime(dueDate, reminderMinutes);
+  const dueDateObj = parseSingaporeDate(dueDate);
   
-  const descriptions: Record<RecurrencePattern, string> = {
-    daily: 'Repeats daily',
-    weekly: 'Repeats weekly',
-    monthly: 'Repeats monthly',
-    yearly: 'Repeats yearly',
-  };
+  // Don't send if notification time hasn't arrived yet
+  if (now < notificationTime) {
+    return false;
+  }
   
-  return descriptions[pattern];
+  // Don't send if todo is already overdue (notification time passed)
+  if (dueDateObj < now) {
+    return false;
+  }
+  
+  // Don't send if already sent
+  if (lastNotificationSent) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Format reminder time for display
+ * @param dueDate - ISO string of due date
+ * @param reminderMinutes - Minutes before due date
+ * @returns Formatted string like "Nov 15, 1:00 PM SGT"
+ */
+export function formatReminderTime(dueDate: string, reminderMinutes: number): string {
+  const notificationTime = calculateNotificationTime(dueDate, reminderMinutes);
+  return notificationTime.toFormat('MMM d, h:mm a') + ' SGT';
 }
