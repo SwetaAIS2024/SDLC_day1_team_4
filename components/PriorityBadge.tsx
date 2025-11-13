@@ -18,7 +18,7 @@ export function PriorityBadge({ priority, size = 'md' }: PriorityBadgeProps) {
     <span
       className={`
         inline-flex items-center rounded-full font-medium
-        ${config.bgColor} ${config.textColor} ${config.borderColor}
+        ${config.color}
         ${sizeClasses[size]}
         border
       `}

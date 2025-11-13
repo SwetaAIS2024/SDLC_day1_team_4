@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     const holiday = holidayDB.getHolidayByDate(dateParam);
 
     // Calculate statistics
-    const completedCount = todos.filter(t => t.completed).length;
+    const completedCount = todos.filter(t => t.completed_at !== null).length;
 
     return NextResponse.json({
       date: dateParam,

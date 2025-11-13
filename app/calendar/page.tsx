@@ -252,7 +252,7 @@ export default function CalendarPage() {
                             ${PRIORITY_CONFIG[todo.priority].color}
                           `}
                         >
-                          {todo.completed && '✓ '}
+                          {todo.completed_at && '✓ '}
                           {todo.title}
                         </div>
                       ))}
@@ -320,13 +320,13 @@ export default function CalendarPage() {
                       <div className="flex items-start gap-3">
                         <input
                           type="checkbox"
-                          checked={todo.completed}
+                          checked={!!todo.completed_at}
                           readOnly
                           className="mt-1"
                         />
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <h4 className={`font-medium ${todo.completed ? 'line-through text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                            <h4 className={`font-medium ${todo.completed_at ? 'line-through text-slate-500' : 'text-slate-900 dark:text-white'}`}>
                               {todo.title}
                             </h4>
                             <span className={`
@@ -357,7 +357,7 @@ export default function CalendarPage() {
                                 <div key={subtask.id} className="flex items-center gap-2 text-sm">
                                   <input
                                     type="checkbox"
-                                    checked={subtask.completed}
+                                    checked={Boolean(subtask.completed)}
                                     readOnly
                                     className="scale-75"
                                   />

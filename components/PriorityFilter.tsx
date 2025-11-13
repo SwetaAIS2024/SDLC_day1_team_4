@@ -36,8 +36,8 @@ export function PriorityFilter({ selectedPriority, onFilterChange, counts }: Pri
               px-4 py-2 rounded-lg font-medium transition
               border-2
               ${selectedPriority === priority
-                ? `${config.bgColor} ${config.textColor} ${config.borderColor}`
-                : `bg-white ${config.textColor} border-gray-200 hover:${config.bgColor}`
+                ? `${config.color}`
+                : `bg-white border-gray-200 hover:${config.color}`
               }
             `}
           >

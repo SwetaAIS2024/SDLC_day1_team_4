@@ -33,8 +33,8 @@ export function filterTodos(
     }
 
     // 2. Status Filter
-    if (filters.status === 'completed' && !todo.completed) return false;
-    if (filters.status === 'incomplete' && todo.completed) return false;
+    if (filters.status === 'completed' && !todo.completed_at) return false;
+    if (filters.status === 'incomplete' && todo.completed_at) return false;
 
     // 3. Priority Filter (multi-select, OR logic)
     if (filters.priorities.length > 0) {
@@ -56,7 +56,7 @@ export function filterTodos(
       switch (filters.dueDateRange) {
         case 'overdue':
           // Incomplete todos with due_date < today
-          if (todo.completed || !todoDueDate) return false;
+          if (todo.completed_at || !todoDueDate) return false;
           if (todoDueDate >= startOfDay(now)) return false;
           break;
 

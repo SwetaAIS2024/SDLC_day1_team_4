@@ -152,7 +152,7 @@ export default function TodosPage() {
     const newTodo: TodoWithSubtasks = {
       id: tempId,
       title,
-      completed: false,
+      completed_at: null,
       priority,
       recurrence_pattern: recurrence || null,
       due_date: newTodoDueDate || null,
@@ -877,8 +877,10 @@ export default function TodosPage() {
   const sortedAndFilteredTodos = filteredTodos
     .sort((a, b) => {
       // Sort by completion status first (incomplete first)
-      if (a.completed !== b.completed) {
-        return a.completed ? 1 : -1;
+      const aCompleted = !!a.completed_at;
+      const bCompleted = !!b.completed_at;
+      if (aCompleted !== bCompleted) {
+        return aCompleted ? 1 : -1;
       }
       
       // Then by priority (high=1, medium=2, low=3)
@@ -1286,30 +1288,30 @@ export default function TodosPage() {
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
-                      checked={todo.completed}
-                      onChange={(e) => updateTodo(todo.id, { completed: e.target.checked })}
+                      checked={!!todo.completed_at}
+                      onChange={(e) => updateTodo(todo.id, { completed_at: e.target.checked ? new Date().toISOString() : null })}
                       className="mt-0.5 w-5 h-5 cursor-pointer accent-blue-600 rounded border-gray-300"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className={`text-base ${todo.completed ? 'line-through text-slate-500' : 'text-gray-900'}`}>
+                        <p className={`text-base ${todo.completed_at ? 'line-through text-slate-500' : 'text-gray-900'}`}>
                           {todo.title}
                         </p>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-                          todo.completed ? 'opacity-50' : ''
+                          todo.completed_at ? 'opacity-50' : ''
                         } ${PRIORITY_CONFIG[todo.priority].color}`}>
                           {PRIORITY_CONFIG[todo.priority].label}
                         </span>
                         {todo.recurrence_pattern && (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-purple-500/50 bg-purple-500/10 text-purple-400 ${
-                            todo.completed ? 'opacity-50' : ''
+                            todo.completed_at ? 'opacity-50' : ''
                           }`} title={RECURRENCE_CONFIG[todo.recurrence_pattern].description}>
                             {RECURRENCE_CONFIG[todo.recurrence_pattern].icon} {RECURRENCE_CONFIG[todo.recurrence_pattern].label}
                           </span>
                         )}
                         {todo.reminder_minutes && (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border border-blue-500/50 bg-blue-500/10 text-blue-400 ${
-                            todo.completed ? 'opacity-50' : ''
+                            todo.completed_at ? 'opacity-50' : ''
                           }`} title={REMINDER_CONFIG[todo.reminder_minutes].description}>
                             🔔 {REMINDER_CONFIG[todo.reminder_minutes].shortLabel}
                           </span>
@@ -1321,7 +1323,7 @@ export default function TodosPage() {
                               <span
                                 key={tag.id}
                                 className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-gray-900 ${
-                                  todo.completed ? 'opacity-50' : ''
+                                  todo.completed_at ? 'opacity-50' : ''
                                 }`}
                                 style={{ backgroundColor: tag.color }}
                               >
@@ -1333,7 +1335,7 @@ export default function TodosPage() {
                       </div>
                       {todo.due_date && (
                         <p className={`text-sm ${
-                          isPastDue(todo.due_date) && !todo.completed
+                          isPastDue(todo.due_date) && !todo.completed_at
                             ? 'text-red-400 font-medium'
                             : 'text-gray-500'
                         }`}>
