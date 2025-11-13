@@ -1,15 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isWebAuthnSupported, setIsWebAuthnSupported] = useState(true); // Assume true initially
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
 
-  const handlePasskeyLogin = async (e: React.FormEvent) => {
+  // Check WebAuthn support on client side only
+  useEffect(() => {
+    setMounted(true);
+    setIsWebAuthnSupported(
+      typeof window !== 'undefined' && window.PublicKeyCredential !== undefined
+    );
+  }, []);
+
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!username.trim()) {
@@ -21,31 +33,132 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // For now, create a simple session (WebAuthn can be added later)
-      const response = await fetch('/api/auth/login', {
+      // 1. Get registration options from server
+      const optionsRes = await fetch('/api/auth/register-options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim() }),
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Login failed');
+      if (!optionsRes.ok) {
+        const data = await optionsRes.json();
+        throw new Error(data.error || 'Failed to start registration');
       }
 
-      // Redirect to main page
+      const { options } = await optionsRes.json();
+
+      // 2. Trigger WebAuthn registration (browser prompt)
+      const credential = await startRegistration(options);
+
+      // 3. Verify registration with server
+      const verifyRes = await fetch('/api/auth/register-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), credential }),
+      });
+
+      if (!verifyRes.ok) {
+        const data = await verifyRes.json();
+        throw new Error(data.error || 'Registration verification failed');
+      }
+
+      // Success! Redirect to todos
       router.push('/todos');
       router.refresh();
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in. Please try again.');
+      if (err.name === 'NotAllowedError') {
+        setError('Registration cancelled or timed out');
+      } else {
+        setError(err.message || 'Registration failed');
+      }
       setLoading(false);
     }
   };
 
-  const handleRegister = () => {
-    // For now, just show an alert. Can be implemented later
-    alert('Registration will be implemented with WebAuthn. For now, just enter any username to login.');
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!username.trim()) {
+      setError('Please enter your username');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 1. Get authentication options
+      const optionsRes = await fetch('/api/auth/login-options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim() }),
+      });
+
+      if (!optionsRes.ok) {
+        const data = await optionsRes.json();
+        throw new Error(data.error || 'Failed to start login');
+      }
+
+      const { options } = await optionsRes.json();
+
+      // 2. Trigger WebAuthn authentication
+      const credential = await startAuthentication(options);
+
+      // 3. Verify authentication with server
+      const verifyRes = await fetch('/api/auth/login-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), credential }),
+      });
+
+      if (!verifyRes.ok) {
+        const data = await verifyRes.json();
+        throw new Error(data.error || 'Login verification failed');
+      }
+
+      // Success! Redirect to todos
+      router.push('/todos');
+      router.refresh();
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        setError('Login cancelled or timed out');
+      } else {
+        setError(err.message || 'Login failed');
+      }
+      setLoading(false);
+    }
   };
+
+  // Don't show anything until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-blue-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-6 transition-colors duration-200">
+        <div className="w-full max-w-md">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-10 border border-gray-100 dark:border-slate-700 transition-colors duration-200">
+            <div className="text-center">
+              <p className="text-gray-600 dark:text-slate-400">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isWebAuthnSupported) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900">
+        <div className="text-center max-w-md p-8">
+          <h1 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Browser Not Supported</h1>
+          <p className="text-gray-600 dark:text-slate-400 mb-2">
+            Your browser doesn't support WebAuthn/Passkeys.
+          </p>
+          <p className="text-sm text-gray-500 dark:text-slate-500">
+            Please use a modern browser (Chrome 67+, Firefox 60+, Safari 13+, Edge 18+).
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-blue-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-6 transition-colors duration-200">
@@ -55,7 +168,9 @@ export default function LoginPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3 transition-colors duration-200">Todo App</h1>
-            <p className="text-gray-600 dark:text-slate-400 text-base transition-colors duration-200">Sign in with your passkey</p>
+            <p className="text-gray-600 dark:text-slate-400 text-base transition-colors duration-200">
+              {isRegistering ? 'Create your account' : 'Sign in with your passkey'}
+            </p>
           </div>
 
           {/* Error Message */}
@@ -66,7 +181,7 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handlePasskeyLogin} className="space-y-5">
+          <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-5">
             {/* Username Input */}
             <div>
               <label className="block text-gray-700 dark:text-slate-300 text-sm font-medium mb-2 transition-colors duration-200">
@@ -79,6 +194,11 @@ export default function LoginPage() {
                 placeholder="Enter your username"
                 className="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white text-base placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-all duration-200"
                 disabled={loading}
+                required
+                minLength={3}
+                maxLength={50}
+                pattern="[a-zA-Z0-9_-]+"
+                title="Only letters, numbers, underscore, and dash allowed"
               />
             </div>
 
@@ -88,17 +208,24 @@ export default function LoginPage() {
               disabled={loading || !username.trim()}
               className="w-full py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-lg font-medium text-base hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
             >
-              {loading ? 'Signing in...' : 'Sign in with Passkey'}
+              {loading ? 
+                (isRegistering ? 'Registering...' : 'Signing in...') : 
+                (isRegistering ? 'Register with Passkey' : 'Sign in with Passkey')
+              }
             </button>
 
             {/* Register Link */}
             <div className="text-center pt-2">
               <button
                 type="button"
-                onClick={handleRegister}
+                onClick={() => {
+                  setIsRegistering(!isRegistering);
+                  setError(null);
+                }}
+                disabled={loading}
                 className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium transition-colors duration-200"
               >
-                Don&apos;t have an account? <span className="underline">Register</span>
+                {isRegistering ? 'Already have an account? Sign in' : 'Don\'t have an account? Register'}
               </button>
             </div>
           </form>

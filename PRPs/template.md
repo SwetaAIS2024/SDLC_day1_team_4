@@ -1,10 +1,10 @@
 in the PRPs folder, generate PRP file with below requirements
 
-**[10-calendar-view.md](10-calendar-view.md)** - Calendar View
-    - Monthly calendar display
-    - Singapore public holidays
-    - Todo visualization by due date
-    - Month navigation
+**[11-authentication-webauthn.md](11-authentication-webauthn.md)** - WebAuthn/Passkeys Authentication
+    - Passwordless authentication flow
+    - Registration and login with biometrics
+    - Session management with JWT
+    - Route protection middleware
 
 with following consistent structure
 - **Feature Overview** - High-level description
