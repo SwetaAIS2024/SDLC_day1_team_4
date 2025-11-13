@@ -3,9 +3,9 @@ import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { userDB, authenticatorDB } from '@/lib/db';
 import { createSession } from '@/lib/auth';
+import { webauthnConfig } from '@/lib/webauthn-config';
 
-const RP_ID = process.env.RP_ID || 'localhost';
-const RP_ORIGIN = process.env.RP_ORIGIN || 'http://localhost:3000';
+const { rpId: RP_ID, rpOrigin: RP_ORIGIN } = webauthnConfig;
 
 export async function POST(request: NextRequest) {
   try {

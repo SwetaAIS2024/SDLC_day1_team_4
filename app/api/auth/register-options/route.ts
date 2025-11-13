@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { userDB } from '@/lib/db';
+import { webauthnConfig } from '@/lib/webauthn-config';
 
-const RP_NAME = process.env.RP_NAME || 'Todo App';
-const RP_ID = process.env.RP_ID || 'localhost';
+const { rpId: RP_ID, rpName: RP_NAME } = webauthnConfig;
 
 // Store challenges temporarily (in-memory, production should use Redis)
 const challenges = new Map<string, { challenge: string; timestamp: number }>();

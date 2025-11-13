@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import { userDB, authenticatorDB } from '@/lib/db';
+import { webauthnConfig } from '@/lib/webauthn-config';
 
-const RP_ID = process.env.RP_ID || 'localhost';
+const { rpId: RP_ID } = webauthnConfig;
 
 // Store challenges temporarily (in-memory, production should use Redis)
 const loginChallenges = new Map<string, { challenge: string; timestamp: number }>();
