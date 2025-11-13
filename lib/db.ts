@@ -18,10 +18,13 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS authenticators (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    credential_id TEXT UNIQUE NOT NULL,
-    credential_public_key BLOB NOT NULL,
+    credential_id TEXT NOT NULL UNIQUE,
+    public_key TEXT NOT NULL,
     counter INTEGER NOT NULL DEFAULT 0,
+    transports TEXT,
+    device_name TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
@@ -189,6 +192,35 @@ try {
 
 // Re-export types from types.ts for convenience
 export type { Priority, RecurrencePattern, ReminderMinutes, NotificationPayload } from './types';
+
+// User interface
+export interface User {
+  id: number;
+  username: string;
+  created_at: string;
+}
+
+// Authenticator interfaces for WebAuthn
+export interface Authenticator {
+  id: number;
+  user_id: number;
+  credential_id: string;
+  public_key: string;
+  counter: number;
+  transports: string | null;
+  device_name: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface AuthenticatorInput {
+  user_id: number;
+  credential_id: string;
+  public_key: string;
+  counter: number;
+  transports?: string[];
+  device_name?: string;
+}
 
 // TypeScript Interfaces
 export interface Tag {
@@ -1154,6 +1186,50 @@ export const userDB = {
     const stmt = db.prepare(`SELECT id, username FROM users WHERE username = ?`);
     const row = stmt.get(username) as any;
     return row || null;
+  },
+};
+
+// Authenticator operations
+export const authenticatorDB = {
+  create: (input: AuthenticatorInput): number => {
+    const stmt = db.prepare(`
+      INSERT INTO authenticators (
+        user_id, credential_id, public_key, counter, transports, device_name
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(
+      input.user_id,
+      input.credential_id,
+      input.public_key,
+      input.counter,
+      input.transports ? JSON.stringify(input.transports) : null,
+      input.device_name || null
+    );
+    return result.lastInsertRowid as number;
+  },
+
+  getByCredentialId: (credentialId: string): Authenticator | null => {
+    const stmt = db.prepare('SELECT * FROM authenticators WHERE credential_id = ?');
+    return stmt.get(credentialId) as Authenticator | null;
+  },
+
+  getByUserId: (userId: number): Authenticator[] => {
+    const stmt = db.prepare('SELECT * FROM authenticators WHERE user_id = ?');
+    return stmt.all(userId) as Authenticator[];
+  },
+
+  updateCounter: (credentialId: string, counter: number): void => {
+    const stmt = db.prepare(`
+      UPDATE authenticators 
+      SET counter = ?, last_used_at = datetime('now')
+      WHERE credential_id = ?
+    `);
+    stmt.run(counter, credentialId);
+  },
+
+  delete: (id: number): void => {
+    const stmt = db.prepare('DELETE FROM authenticators WHERE id = ?');
+    stmt.run(id);
   },
 };
 
