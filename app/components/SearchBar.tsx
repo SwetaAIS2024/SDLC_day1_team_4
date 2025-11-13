@@ -33,25 +33,25 @@ export function SearchBar({
           value={value}
           onChange={(e) => handleChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full pl-10 pr-10 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
         {value && (
           <button
             onClick={() => onChange('')}
             title="Clear search"
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <X size={20} />
           </button>
         )}
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+      <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
         <input
           type="checkbox"
           checked={advancedSearch}
           onChange={onToggleAdvanced}
-          className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+          className="w-4 h-4 rounded border-gray-300 bg-white text-blue-600 focus:ring-blue-500"
         />
         <span>Include tags in search</span>
       </label>

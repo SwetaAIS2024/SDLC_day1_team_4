@@ -126,21 +126,21 @@ export default function CalendarPage() {
 
   if (loading && !calendarMonth) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
-        <div className="text-slate-600 dark:text-slate-400">Loading calendar...</div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-gray-600">Loading calendar...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
-      <header className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+      <header className="bg-white/90 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">📅 Calendar View</h1>
-              <p className="text-sm text-slate-600 dark:text-slate-400">Welcome, {username || 'User'}</p>
+              <h1 className="text-2xl font-bold text-gray-900">📅 Calendar View</h1>
+              <p className="text-sm text-gray-600">Welcome, {username || 'User'}</p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -151,7 +151,7 @@ export default function CalendarPage() {
               </button>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 bg-slate-700 dark:bg-slate-600 text-white rounded-lg text-sm hover:bg-slate-600 dark:hover:bg-slate-500 transition-colors"
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition-colors"
               >
                 Logout
               </button>
@@ -163,21 +163,21 @@ export default function CalendarPage() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         {error && (
-          <div className="mb-4 bg-red-900/20 border border-red-500/50 text-red-200 rounded-lg p-4">
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-lg p-4">
             {error}
           </div>
         )}
 
         {/* Calendar Navigation */}
-        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-6 mb-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+            <h2 className="text-2xl font-bold text-gray-900">
               {calendarMonth?.monthName} {viewYear}
             </h2>
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePreviousMonth}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 ◀ Prev
               </button>
@@ -189,7 +189,7 @@ export default function CalendarPage() {
               </button>
               <button
                 onClick={handleNextMonth}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 Next ▶
               </button>
@@ -279,10 +279,10 @@ export default function CalendarPage() {
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
                   {dayModalData.dayName}
                 </h2>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
+                <p className="text-sm text-gray-600">
                   {formatCalendarDate(new Date(dayModalData.date))}
                   {dayModalData.isHoliday && (
-                    <span className="ml-2 text-yellow-600 dark:text-yellow-400">
+                    <span className="ml-2 text-yellow-600">
                       🎉 {dayModalData.holidayName}
                     </span>
                   )}
@@ -290,7 +290,7 @@ export default function CalendarPage() {
               </div>
               <button
                 onClick={() => setShowDayModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl font-bold transition-colors"
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold transition-colors"
               >
                 ×
               </button>
@@ -298,16 +298,16 @@ export default function CalendarPage() {
 
             <div className="p-6">
               {dayModalData.todoCount === 0 ? (
-                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <div className="text-center py-8 text-gray-500">
                   No todos for this day
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    <h3 className="text-lg font-semibold text-gray-900">
                       Todos ({dayModalData.todoCount})
                     </h3>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                    <span className="text-sm text-gray-600">
                       {dayModalData.completedCount} completed
                     </span>
                   </div>
