@@ -1,8 +1,11 @@
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import { userDB } from './db';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 const SESSION_COOKIE_NAME = 'session';
+const DEMO_USER_ID = 1;
+const DEMO_USERNAME = 'demo-user';
 
 export interface Session {
   userId: number;
@@ -10,22 +13,44 @@ export interface Session {
 }
 
 /**
+ * Ensure demo user exists in database
+ */
+function ensureDemoUser(): void {
+  try {
+    let user = userDB.getById(DEMO_USER_ID);
+    if (!user) {
+      // Create demo user if doesn't exist
+      const userId = userDB.create(DEMO_USERNAME);
+      console.log('[Auth] Created demo user:', userId);
+    }
+  } catch (error) {
+    console.error('[Auth] Error ensuring demo user:', error);
+  }
+}
+
+/**
  * Get the current session from cookies
- * Returns null if no valid session exists
+ * Always returns a demo session (auto-login)
  */
 export async function getSession(): Promise<Session | null> {
   try {
+    // Ensure demo user exists
+    ensureDemoUser();
+
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
     
     if (!sessionCookie) {
-      return null;
+      // Auto-create session for demo user
+      await createSession(DEMO_USER_ID, DEMO_USERNAME);
+      return { userId: DEMO_USER_ID, username: DEMO_USERNAME };
     }
 
     const decoded = jwt.verify(sessionCookie.value, JWT_SECRET) as Session;
     return decoded;
   } catch (error) {
-    return null;
+    // If any error, return demo session
+    return { userId: DEMO_USER_ID, username: DEMO_USERNAME };
   }
 }
 

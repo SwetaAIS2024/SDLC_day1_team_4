@@ -92,16 +92,13 @@ export default function TodosPage() {
     try {
       const response = await fetch('/api/auth/session');
       if (!response.ok) {
-        if (response.status === 401) {
-          router.push('/login');
-          return;
-        }
         throw new Error('Failed to fetch session');
       }
       const data = await response.json();
-      setUsername(data.username || '');
+      setUsername(data.username || 'Demo User');
     } catch (err) {
       console.error('Error fetching username:', err);
+      setUsername('Demo User');
     }
   };
 
@@ -110,11 +107,6 @@ export default function TodosPage() {
       setLoading(true);
       const response = await fetch('/api/todos');
       if (!response.ok) {
-        if (response.status === 401) {
-          // Not authenticated, redirect to login
-          router.push('/login');
-          return;
-        }
         throw new Error('Failed to fetch todos');
       }
       const data = await response.json();
@@ -310,21 +302,6 @@ export default function TodosPage() {
     setEditDueDate('');
     setEditPriority('medium');
     setEditSelectedTagIds([]);
-  };
-
-  const handleLogout = async () => {
-    try {
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        router.push('/login');
-      }
-    } catch (err) {
-      console.error('Logout error:', err);
-      setError('Failed to logout');
-    }
   };
 
   // Export/Import functions
@@ -962,12 +939,9 @@ export default function TodosPage() {
               >
                 🔔
               </button>
-              <button 
-                onClick={handleLogout}
-                className="px-4 py-2 bg-gray-600 dark:bg-slate-700 text-white rounded-lg font-medium hover:bg-gray-700 dark:hover:bg-slate-600 transition-colors duration-200"
-              >
-                Logout
-              </button>
+              <div className="px-4 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-lg font-medium border border-blue-200 dark:border-blue-800">
+                🎯 Demo Mode - No Login Required
+              </div>
             </div>
           </div>
         </div>
