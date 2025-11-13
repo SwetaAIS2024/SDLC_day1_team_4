@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { getSingaporeNow } from './timezone';
-import { Priority, RecurrencePattern, ReminderMinutes, PRIORITY_CONFIG } from './types';
+import { Priority, RecurrencePattern, ReminderMinutes, PRIORITY_CONFIG, Holiday } from './types';
 
 const db = new Database('todos.db');
 
@@ -108,6 +108,19 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_template_tags_template_id ON template_tags(template_id);
   CREATE INDEX IF NOT EXISTS idx_template_tags_tag_id ON template_tags(tag_id);
+
+  CREATE TABLE IF NOT EXISTS holidays (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    date TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    is_recurring INTEGER NOT NULL DEFAULT 0 CHECK(is_recurring IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_holidays_date ON holidays(date);
+  CREATE INDEX IF NOT EXISTS idx_holidays_year ON holidays(year);
+  CREATE INDEX IF NOT EXISTS idx_holidays_recurring ON holidays(is_recurring);
 `);
 
 // Add priority column to existing tables (migration)
@@ -530,6 +543,32 @@ export const todoDB = {
       tags,
       progress: calculateProgress(subtasks),
     };
+  },
+
+  // Get todos with subtasks by date range (for calendar view)
+  getTodosByDateRange: (userId: number, startDate: string, endDate: string): TodoWithSubtasks[] => {
+    const stmt = db.prepare(`
+      SELECT * FROM todos
+      WHERE user_id = ?
+        AND due_date IS NOT NULL
+        AND due_date >= ?
+        AND due_date <= ?
+      ORDER BY due_date ASC, priority DESC
+    `);
+    const rows = stmt.all(userId, startDate, endDate);
+    const todos = rows.map(rowToTodo);
+    
+    // Add subtasks and tags to each todo
+    return todos.map(todo => {
+      const subtasks = subtaskDB.getByTodoId(todo.id);
+      const tags = tagDB.getByTodoId(todo.id);
+      return {
+        ...todo,
+        subtasks,
+        tags,
+        progress: calculateProgress(subtasks),
+      };
+    });
   }
 };
 
@@ -1086,6 +1125,68 @@ export const userDB = {
     const stmt = db.prepare(`SELECT id, username FROM users WHERE username = ?`);
     const row = stmt.get(username) as any;
     return row || null;
+  },
+};
+
+// Holiday operations
+export const holidayDB = {
+  // Get holidays for a specific month and year
+  getHolidaysByMonth: (year: number, month: number): Holiday[] => {
+    const monthStr = month.toString().padStart(2, '0');
+    const stmt = db.prepare(`
+      SELECT * FROM holidays
+      WHERE (year = ? OR is_recurring = 1)
+        AND strftime('%m', date) = ?
+      ORDER BY date ASC
+    `);
+    const rows = stmt.all(year, monthStr) as any[];
+    return rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      date: row.date,
+      year: row.year,
+      is_recurring: Boolean(row.is_recurring),
+      created_at: row.created_at,
+    }));
+  },
+
+  // Get holiday by specific date
+  getHolidayByDate: (date: string): Holiday | null => {
+    const year = parseInt(date.split('-')[0]);
+    const stmt = db.prepare(`
+      SELECT * FROM holidays
+      WHERE date = ? AND (year = ? OR is_recurring = 1)
+      LIMIT 1
+    `);
+    const row = stmt.get(date, year) as any;
+    if (!row) return null;
+    
+    return {
+      id: row.id,
+      name: row.name,
+      date: row.date,
+      year: row.year,
+      is_recurring: Boolean(row.is_recurring),
+      created_at: row.created_at,
+    };
+  },
+
+  // Get all holidays for a specific year
+  getAllHolidays: (year: number): Holiday[] => {
+    const stmt = db.prepare(`
+      SELECT * FROM holidays
+      WHERE year = ? OR is_recurring = 1
+      ORDER BY date ASC
+    `);
+    const rows = stmt.all(year) as any[];
+    return rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      date: row.date,
+      year: row.year,
+      is_recurring: Boolean(row.is_recurring),
+      created_at: row.created_at,
+    }));
   },
 };
 

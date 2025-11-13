@@ -11,6 +11,9 @@ import { SearchBar } from '../components/SearchBar';
 import { FilterPanel } from '../components/FilterPanel';
 import { ActiveFilterBadges } from '../components/ActiveFilterBadges';
 import { FilterStats } from '../components/FilterStats';
+import { ExportModal } from '../components/ExportModal';
+import { ImportModal } from '../components/ImportModal';
+import type { ExportOptions, ImportOptions, ImportResult } from '@/lib/types';
 
 export default function TodosPage() {
   const router = useRouter();
@@ -67,6 +70,10 @@ export default function TodosPage() {
   const debouncedSearch = useDebounce(searchInput, 300);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [filters, setFilters] = useState<SearchFilters>(getDefaultFilters());
+
+  // Export/Import state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Update filters when debounced search changes
   useEffect(() => {
@@ -318,6 +325,76 @@ export default function TodosPage() {
       console.error('Logout error:', err);
       setError('Failed to logout');
     }
+  };
+
+  // Export/Import functions
+  const handleExport = async (options: ExportOptions) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.includeTodos) params.append('include_todos', 'true');
+      if (options.includeTags) params.append('include_tags', 'true');
+      if (options.includeTemplates) params.append('include_templates', 'true');
+      if (options.includeCompleted) params.append('include_completed', 'true');
+
+      const response = await fetch(`/api/todos/export?${params.toString()}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Export failed');
+      }
+
+      // Trigger download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Extract filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filenameMatch = contentDisposition?.match(/filename="(.+?)"/);
+      a.download = filenameMatch ? filenameMatch[1] : 'todos-backup.json';
+      
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      setShowExportModal(false);
+    } catch (err) {
+      console.error('Export error:', err);
+      setError(err instanceof Error ? err.message : 'Export failed');
+    }
+  };
+
+  const handleImport = async (file: File, options: ImportOptions): Promise<ImportResult> => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      const response = await fetch('/api/todos/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, options }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Import failed');
+      }
+
+      const result: ImportResult = await response.json();
+      return result;
+    } catch (err) {
+      console.error('Import error:', err);
+      throw err;
+    }
+  };
+
+  const handleImportSuccess = () => {
+    // Refresh all data after successful import
+    fetchTodos();
+    fetchTags();
+    fetchTemplates();
+    setShowImportModal(false);
   };
 
   // Subtask functions
@@ -850,14 +927,29 @@ export default function TodosPage() {
             <button className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm hover:bg-slate-600 transition-colors">
               Data
             </button>
-            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-500 transition-colors">
-              Calendar
+            <button 
+              onClick={() => router.push('/calendar')}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-500 transition-colors"
+            >
+              📅 Calendar
             </button>
             <button 
               onClick={() => setShowTemplateModal(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500 transition-colors"
             >
               📋 Templates
+            </button>
+            <button 
+              onClick={() => setShowExportModal(true)}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-500 transition-colors"
+            >
+              📤 Export
+            </button>
+            <button 
+              onClick={() => setShowImportModal(true)}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-500 transition-colors"
+            >
+              📥 Import
             </button>
             <button className="px-3 py-2 bg-yellow-500 text-white rounded-lg text-sm hover:bg-yellow-400 transition-colors">
               🔔
@@ -1710,6 +1802,21 @@ export default function TodosPage() {
           </div>
         </div>
       )}
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+      />
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImport}
+        onSuccess={handleImportSuccess}
+      />
     </div>
   );
 }
