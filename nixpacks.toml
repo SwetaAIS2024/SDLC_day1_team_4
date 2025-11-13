@@ -1,11 +1,15 @@
 [phases.setup]
 nixPkgs = ['nodejs_20', 'sqlite']
+aptPkgs = ['sqlite3']
 
 [phases.install]
-cmds = ['npm ci']
+cmds = ['npm ci --prefer-offline --no-audit']
 
 [phases.build]
 cmds = ['npm run build']
 
 [start]
 cmd = 'npm start'
+
+[variables]
+NODE_ENV = 'production'

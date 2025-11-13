@@ -5,6 +5,8 @@ node_modules
 
 # Test files
 tests
+playwright-report
+test-results
 *.spec.ts
 *.test.ts
 
@@ -12,26 +14,35 @@ tests
 *.md
 !README.md
 
-# Local database
+# Local database (Railway will create its own)
 todos.db
 todos.db-journal
+*.db-shm
+*.db-wal
 
 # Environment files
 .env.local
 .env*.local
 
-# Build artifacts
-.next
-out
+# Build cache
+.next/cache
 
 # IDE
 .vscode
 .idea
+*.swp
+*.swo
 
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # OS files
 .DS_Store
 Thumbs.db
+*.tmp
+
+# Playwright
+playwright/.cache
