@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatSingaporeDate, isPastDue } from '@/lib/timezone';
-import { Priority, RecurrencePattern, ReminderMinutes, PRIORITY_CONFIG, RECURRENCE_CONFIG, REMINDER_CONFIG, Todo } from '@/lib/types';
+import { Priority, RecurrencePattern, ReminderMinutes, PRIORITY_CONFIG, RECURRENCE_CONFIG, REMINDER_CONFIG, TodoWithSubtasks, Subtask, TagResponse } from '@/lib/types';
 import { useNotifications } from '@/lib/hooks/useNotifications';
 
 export default function TodosPage() {
   const router = useRouter();
   const { permission, startPolling } = useNotifications();
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const [todos, setTodos] = useState<TodoWithSubtasks[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [username, setUsername] = useState<string>('');
@@ -26,6 +26,22 @@ export default function TodosPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDueDate, setEditDueDate] = useState<string>('');
   const [editPriority, setEditPriority] = useState<Priority>('medium');
+  
+  // Subtask state
+  const [expandedTodos, setExpandedTodos] = useState<Set<number>>(new Set());
+  const [newSubtaskTitles, setNewSubtaskTitles] = useState<Record<number, string>>({});
+  
+  // Tag state
+  const [tags, setTags] = useState<TagResponse[]>([]);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#3B82F6');
+  const [editingTagId, setEditingTagId] = useState<number | null>(null);
+  const [editTagName, setEditTagName] = useState('');
+  const [editTagColor, setEditTagColor] = useState('');
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [editSelectedTagIds, setEditSelectedTagIds] = useState<number[]>([]);
+  const [filterTagId, setFilterTagId] = useState<number | null>(null);
 
   const fetchUsername = async () => {
     try {
@@ -88,7 +104,7 @@ export default function TodosPage() {
     if (!title || !newTodoDueDate) return;
 
     const tempId = Date.now();
-    const newTodo: Todo = {
+    const newTodo: TodoWithSubtasks = {
       id: tempId,
       title,
       completed: false,
@@ -99,6 +115,9 @@ export default function TodosPage() {
       last_notification_sent: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      subtasks: [],
+      progress: 0,
+      tags: selectedTagIds.map(id => tags.find(t => t.id === id)!).filter(Boolean),
     };
 
     // Optimistic update
@@ -108,6 +127,7 @@ export default function TodosPage() {
     setPriority('medium');
     setRecurrence('');
     setReminder(null);
+    setSelectedTagIds([]);
 
     try {
       const response = await fetch('/api/todos', {
@@ -118,7 +138,8 @@ export default function TodosPage() {
           priority, 
           recurrence_pattern: recurrence || null,
           due_date: newTodoDueDate || null,
-          reminder_minutes: reminder
+          reminder_minutes: reminder,
+          tag_ids: selectedTagIds,
         }),
       });
 
@@ -136,7 +157,7 @@ export default function TodosPage() {
     }
   };
 
-  const updateTodo = async (id: number, updates: Partial<Todo>) => {
+  const updateTodo = async (id: number, updates: Partial<TodoWithSubtasks>) => {
     // Find original todo for rollback
     const originalTodo = todos.find(t => t.id === id);
     if (!originalTodo) return;
@@ -213,11 +234,12 @@ export default function TodosPage() {
     }
   };
 
-  const startEdit = (todo: Todo) => {
+  const startEdit = (todo: TodoWithSubtasks) => {
     setEditingId(todo.id);
     setEditTitle(todo.title);
     setEditDueDate(todo.due_date || '');
     setEditPriority(todo.priority);
+    setEditSelectedTagIds(todo.tags?.map(t => t.id) || []);
   };
 
   const saveEdit = async () => {
@@ -227,12 +249,14 @@ export default function TodosPage() {
       title: editTitle.trim(),
       priority: editPriority,
       due_date: editDueDate || null,
-    });
+      tag_ids: editSelectedTagIds,
+    } as any); // Use 'as any' since tag_ids is not in TodoWithSubtasks type but API accepts it
 
     setEditingId(null);
     setEditTitle('');
     setEditDueDate('');
     setEditPriority('medium');
+    setEditSelectedTagIds([]);
   };
 
   const cancelEdit = () => {
@@ -240,6 +264,7 @@ export default function TodosPage() {
     setEditTitle('');
     setEditDueDate('');
     setEditPriority('medium');
+    setEditSelectedTagIds([]);
   };
 
   const handleLogout = async () => {
@@ -257,17 +282,289 @@ export default function TodosPage() {
     }
   };
 
+  // Subtask functions
+  const toggleSubtasks = (todoId: number) => {
+    setExpandedTodos(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(todoId)) {
+        newSet.delete(todoId);
+      } else {
+        newSet.add(todoId);
+      }
+      return newSet;
+    });
+  };
+
+  const addSubtask = async (todoId: number) => {
+    const title = newSubtaskTitles[todoId]?.trim();
+    if (!title) return;
+
+    try {
+      const response = await fetch(`/api/todos/${todoId}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create subtask');
+      }
+
+      const createdSubtask = await response.json();
+      
+      // Update todos state with new subtask
+      setTodos(prev => prev.map(todo => {
+        if (todo.id === todoId) {
+          const newSubtasks = [...todo.subtasks, createdSubtask];
+          const completed = newSubtasks.filter(s => s.completed).length;
+          const progress = newSubtasks.length > 0 ? Math.round((completed / newSubtasks.length) * 100) : 0;
+          return {
+            ...todo,
+            subtasks: newSubtasks,
+            progress,
+          };
+        }
+        return todo;
+      }));
+
+      // Clear input
+      setNewSubtaskTitles(prev => ({ ...prev, [todoId]: '' }));
+    } catch (err) {
+      console.error('Error adding subtask:', err);
+      setError('Failed to add subtask. Please try again.');
+    }
+  };
+
+  const toggleSubtask = async (todoId: number, subtaskId: number, completed: boolean) => {
+    try {
+      const response = await fetch(`/api/todos/${todoId}/subtasks/${subtaskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update subtask');
+      }
+
+      const updatedSubtask = await response.json();
+
+      // Update todos state
+      setTodos(prev => prev.map(todo => {
+        if (todo.id === todoId) {
+          const newSubtasks = todo.subtasks.map(s => 
+            s.id === subtaskId ? updatedSubtask : s
+          );
+          const completedCount = newSubtasks.filter(s => s.completed).length;
+          const progress = newSubtasks.length > 0 ? Math.round((completedCount / newSubtasks.length) * 100) : 0;
+          return {
+            ...todo,
+            subtasks: newSubtasks,
+            progress,
+          };
+        }
+        return todo;
+      }));
+    } catch (err) {
+      console.error('Error toggling subtask:', err);
+      setError('Failed to update subtask. Please try again.');
+    }
+  };
+
+  const deleteSubtask = async (todoId: number, subtaskId: number) => {
+    try {
+      const response = await fetch(`/api/todos/${todoId}/subtasks/${subtaskId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete subtask');
+      }
+
+      // Update todos state
+      setTodos(prev => prev.map(todo => {
+        if (todo.id === todoId) {
+          const newSubtasks = todo.subtasks.filter(s => s.id !== subtaskId);
+          const completedCount = newSubtasks.filter(s => s.completed).length;
+          const progress = newSubtasks.length > 0 ? Math.round((completedCount / newSubtasks.length) * 100) : 0;
+          return {
+            ...todo,
+            subtasks: newSubtasks,
+            progress,
+          };
+        }
+        return todo;
+      }));
+    } catch (err) {
+      console.error('Error deleting subtask:', err);
+      setError('Failed to delete subtask. Please try again.');
+    }
+  };
+
+  // Tag functions
+  const fetchTags = async () => {
+    try {
+      const response = await fetch('/api/tags');
+      if (!response.ok) {
+        throw new Error('Failed to fetch tags');
+      }
+      const data = await response.json();
+      setTags(data.tags || []);
+    } catch (err) {
+      console.error('Error fetching tags:', err);
+    }
+  };
+
+  const createTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newTagName.trim();
+    if (!name) return;
+
+    try {
+      const response = await fetch('/api/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, color: newTagColor }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create tag');
+      }
+
+      const createdTag = await response.json();
+      setTags(prev => [...prev, createdTag]);
+      setNewTagName('');
+      setNewTagColor('#3B82F6');
+    } catch (err: any) {
+      setError(err.message || 'Failed to create tag. Please try again.');
+      console.error(err);
+    }
+  };
+
+  const startTagEdit = (tag: TagResponse) => {
+    setEditingTagId(tag.id);
+    setEditTagName(tag.name);
+    setEditTagColor(tag.color);
+  };
+
+  const saveTagEdit = async () => {
+    if (!editingTagId || !editTagName.trim()) return;
+
+    try {
+      const response = await fetch(`/api/tags/${editingTagId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editTagName.trim(), color: editTagColor }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update tag');
+      }
+
+      const updatedTag = await response.json();
+      setTags(prev => prev.map(t => t.id === editingTagId ? updatedTag : t));
+      
+      // Update todos that have this tag
+      setTodos(prev => prev.map(todo => ({
+        ...todo,
+        tags: todo.tags?.map(t => t.id === editingTagId ? updatedTag : t),
+      })));
+
+      setEditingTagId(null);
+      setEditTagName('');
+      setEditTagColor('');
+    } catch (err: any) {
+      setError(err.message || 'Failed to update tag. Please try again.');
+      console.error(err);
+    }
+  };
+
+  const cancelTagEdit = () => {
+    setEditingTagId(null);
+    setEditTagName('');
+    setEditTagColor('');
+  };
+
+  const deleteTag = async (tagId: number) => {
+    const tag = tags.find(t => t.id === tagId);
+    if (!tag) return;
+
+    const confirmed = window.confirm(`Delete tag "${tag.name}"? It will be removed from all todos.`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/tags/${tagId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete tag');
+      }
+
+      setTags(prev => prev.filter(t => t.id !== tagId));
+      
+      // Remove tag from todos
+      setTodos(prev => prev.map(todo => ({
+        ...todo,
+        tags: todo.tags?.filter(t => t.id !== tagId),
+      })));
+
+      // Clear filter if filtering by deleted tag
+      if (filterTagId === tagId) {
+        setFilterTagId(null);
+      }
+    } catch (err) {
+      setError('Failed to delete tag. Please try again.');
+      console.error(err);
+    }
+  };
+
+  const toggleTagSelection = (tagId: number) => {
+    setSelectedTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  };
+
+  const toggleEditTagSelection = (tagId: number) => {
+    setEditSelectedTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  };
+
+  // Fetch tags on mount
+  useEffect(() => {
+    fetchTags();
+  }, []);
+
   // Sort and filter todos
   const sortedAndFilteredTodos = todos
     .filter(todo => {
-      // Filter by search query
-      if (searchQuery && !todo.title.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false;
+      // Filter by search query (search in title and subtasks)
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const titleMatch = todo.title.toLowerCase().includes(query);
+        const subtaskMatch = todo.subtasks.some(s => 
+          s.title.toLowerCase().includes(query)
+        );
+        if (!titleMatch && !subtaskMatch) {
+          return false;
+        }
       }
+      
       // Filter by priority
       if (filterPriority !== 'all' && todo.priority !== filterPriority) {
         return false;
       }
+      
+      // Filter by tag
+      if (filterTagId !== null) {
+        if (!todo.tags || !todo.tags.some(t => t.id === filterTagId)) {
+          return false;
+        }
+      }
+      
       return true;
     })
     .sort((a, b) => {
@@ -313,6 +610,12 @@ export default function TodosPage() {
             <p className="text-sm text-slate-400">Welcome, {username || 'abc'}</p>
           </div>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowTagModal(true)}
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-500 transition-colors"
+            >
+              + Manage Tags
+            </button>
             <button className="px-4 py-2 bg-slate-700 text-white rounded-lg text-sm hover:bg-slate-600 transition-colors">
               Data
             </button>
@@ -423,6 +726,7 @@ export default function TodosPage() {
                 <option value="60">🔔 {REMINDER_CONFIG[60].label}</option>
                 <option value="120">🔔 {REMINDER_CONFIG[120].label}</option>
                 <option value="1440">🔔 {REMINDER_CONFIG[1440].label}</option>
+                <option value="2880">🔔 {REMINDER_CONFIG[2880].label}</option>
                 <option value="10080">🔔 {REMINDER_CONFIG[10080].label}</option>
               </select>
             </div>
@@ -441,6 +745,34 @@ export default function TodosPage() {
                 <option>Meeting</option>
               </select>
             </div>
+
+            {/* Tag Selection */}
+            {tags.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-slate-300 text-sm">Tags:</label>
+                <div className="flex flex-wrap gap-2">
+                  {tags.map(tag => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => toggleTagSelection(tag.id)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                        selectedTagIds.includes(tag.id)
+                          ? 'text-white'
+                          : 'border-2 text-slate-400 hover:text-slate-300'
+                      }`}
+                      style={{
+                        backgroundColor: selectedTagIds.includes(tag.id) ? tag.color : 'transparent',
+                        borderColor: tag.color,
+                      }}
+                    >
+                      {selectedTagIds.includes(tag.id) && '✓ '}
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </form>
         </div>
 
@@ -471,6 +803,18 @@ export default function TodosPage() {
               <option value="medium">Medium</option>
               <option value="low">Low</option>
             </select>
+            {tags.length > 0 && (
+              <select
+                value={filterTagId ?? ''}
+                onChange={(e) => setFilterTagId(e.target.value ? parseInt(e.target.value) : null)}
+                className="px-4 py-2 bg-[#0f172a] border border-slate-600/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              >
+                <option value="">All Tags</option>
+                {tags.map(tag => (
+                  <option key={tag.id} value={tag.id}>{tag.name}</option>
+                ))}
+              </select>
+            )}
             <button 
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500 transition-colors"
@@ -562,6 +906,33 @@ export default function TodosPage() {
                         className="flex-1 px-4 py-2.5 bg-[#0f172a] border border-slate-600/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                       />
                     </div>
+                    {/* Tag Selection in Edit Mode */}
+                    {tags.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-slate-300 text-sm">Tags:</label>
+                        <div className="flex flex-wrap gap-2">
+                          {tags.map(tag => (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              onClick={() => toggleEditTagSelection(tag.id)}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                                editSelectedTagIds.includes(tag.id)
+                                  ? 'text-white'
+                                  : 'border-2 text-slate-400 hover:text-slate-300'
+                              }`}
+                              style={{
+                                backgroundColor: editSelectedTagIds.includes(tag.id) ? tag.color : 'transparent',
+                                borderColor: tag.color,
+                              }}
+                            >
+                              {editSelectedTagIds.includes(tag.id) && '✓ '}
+                              {tag.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button
                         onClick={saveEdit}
@@ -610,6 +981,22 @@ export default function TodosPage() {
                             🔔 {REMINDER_CONFIG[todo.reminder_minutes].shortLabel}
                           </span>
                         )}
+                        {/* Tag pills */}
+                        {todo.tags && todo.tags.length > 0 && (
+                          <>
+                            {todo.tags.map(tag => (
+                              <span
+                                key={tag.id}
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white ${
+                                  todo.completed ? 'opacity-50' : ''
+                                }`}
+                                style={{ backgroundColor: tag.color }}
+                              >
+                                {tag.name}
+                              </span>
+                            ))}
+                          </>
+                        )}
                       </div>
                       {todo.due_date && (
                         <p className={`text-sm ${
@@ -620,8 +1007,32 @@ export default function TodosPage() {
                           📅 {formatSingaporeDate(todo.due_date)}
                         </p>
                       )}
+                      
+                      {/* Progress Bar */}
+                      {todo.subtasks.length > 0 && (
+                        <div className="mt-2">
+                          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                            <span>{todo.subtasks.filter(s => s.completed).length}/{todo.subtasks.length} subtasks</span>
+                            <span>·</span>
+                            <span>{todo.progress}%</span>
+                          </div>
+                          <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="bg-blue-500 h-full transition-all duration-300"
+                              style={{ width: `${todo.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleSubtasks(todo.id)}
+                        className="px-4 py-1.5 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-500 transition-colors"
+                      >
+                        {expandedTodos.has(todo.id) ? '▼ Subtasks' : '▶ Subtasks'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => startEdit(todo)}
@@ -643,11 +1054,235 @@ export default function TodosPage() {
                     </div>
                   </div>
                 )}
+                
+                {/* Subtasks Section */}
+                {!editingId && expandedTodos.has(todo.id) && (
+                  <div className="mt-4 pt-4 border-t border-slate-700/50">
+                    {todo.subtasks.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {todo.subtasks.map((subtask) => (
+                          <div key={subtask.id} className="flex items-center gap-2 group">
+                            <input
+                              type="checkbox"
+                              checked={subtask.completed}
+                              onChange={(e) => toggleSubtask(todo.id, subtask.id, e.target.checked)}
+                              className="w-4 h-4 cursor-pointer accent-blue-600 rounded border-slate-600"
+                            />
+                            <span className={`flex-1 text-sm ${subtask.completed ? 'line-through text-slate-500' : 'text-slate-300'}`}>
+                              {subtask.title}
+                            </span>
+                            <button
+                              onClick={() => deleteSubtask(todo.id, subtask.id)}
+                              className="opacity-0 group-hover:opacity-100 px-2 py-1 text-red-400 hover:text-red-300 text-xs transition-opacity"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Add Subtask Form */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newSubtaskTitles[todo.id] || ''}
+                        onChange={(e) => setNewSubtaskTitles(prev => ({ ...prev, [todo.id]: e.target.value }))}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addSubtask(todo.id);
+                          }
+                        }}
+                        placeholder="Add a subtask..."
+                        className="flex-1 px-3 py-2 bg-[#0f172a] border border-slate-600/50 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                        maxLength={200}
+                      />
+                      <button
+                        onClick={() => addSubtask(todo.id)}
+                        disabled={!newSubtaskTitles[todo.id]?.trim()}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Tag Management Modal */}
+      {showTagModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-50">
+          <div className="bg-[#1e293b] rounded-lg border border-slate-700/50 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-700/50 flex items-center justify-between sticky top-0 bg-[#1e293b]">
+              <h2 className="text-2xl font-bold text-white">Manage Tags</h2>
+              <button
+                onClick={() => setShowTagModal(false)}
+                className="text-slate-400 hover:text-white text-2xl font-bold transition-colors"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Create Tag Form */}
+              <div className="bg-[#0f172a] rounded-lg p-4 border border-slate-600/50">
+                <h3 className="text-lg font-semibold text-white mb-4">Create New Tag</h3>
+                <form onSubmit={createTag} className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Tag Name</label>
+                    <input
+                      type="text"
+                      value={newTagName}
+                      onChange={(e) => setNewTagName(e.target.value)}
+                      placeholder="e.g., Work, Personal, Urgent"
+                      className="w-full px-4 py-2.5 bg-[#1e293b] border border-slate-600/50 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                      maxLength={50}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">Color</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={newTagColor}
+                        onChange={(e) => setNewTagColor(e.target.value)}
+                        className="h-10 w-20 cursor-pointer rounded border border-slate-600/50"
+                      />
+                      <input
+                        type="text"
+                        value={newTagColor}
+                        onChange={(e) => setNewTagColor(e.target.value)}
+                        placeholder="#3B82F6"
+                        className="flex-1 px-4 py-2.5 bg-[#1e293b] border border-slate-600/50 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                      />
+                      <span
+                        className="px-4 py-2 rounded-full text-sm font-medium text-white"
+                        style={{ backgroundColor: newTagColor }}
+                      >
+                        Preview
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!newTagName.trim()}
+                    className="w-full px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-500 disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Create Tag
+                  </button>
+                </form>
+              </div>
+
+              {/* Tags List */}
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-4">Your Tags</h3>
+                {tags.length === 0 ? (
+                  <p className="text-slate-400 text-center py-8">No tags yet. Create your first one above!</p>
+                ) : (
+                  <div className="space-y-2">
+                    {tags.map(tag => (
+                      <div
+                        key={tag.id}
+                        className="bg-[#0f172a] rounded-lg p-4 border border-slate-600/50 hover:border-slate-500/70 transition-all"
+                      >
+                        {editingTagId === tag.id ? (
+                          // Edit Mode
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-slate-400 mb-1.5">Tag Name</label>
+                              <input
+                                type="text"
+                                value={editTagName}
+                                onChange={(e) => setEditTagName(e.target.value)}
+                                className="w-full px-4 py-2.5 bg-[#1e293b] border border-slate-600/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                maxLength={50}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-slate-400 mb-1.5">Color</label>
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="color"
+                                  value={editTagColor}
+                                  onChange={(e) => setEditTagColor(e.target.value)}
+                                  className="h-10 w-20 cursor-pointer rounded border border-slate-600/50"
+                                />
+                                <input
+                                  type="text"
+                                  value={editTagColor}
+                                  onChange={(e) => setEditTagColor(e.target.value)}
+                                  className="flex-1 px-4 py-2.5 bg-[#1e293b] border border-slate-600/50 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                  pattern="^#[0-9A-Fa-f]{6}$"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={saveTagEdit}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-500 transition-colors"
+                              >
+                                Update
+                              </button>
+                              <button
+                                onClick={cancelTagEdit}
+                                className="px-4 py-2 bg-slate-600 text-white rounded-lg text-sm hover:bg-slate-500 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          // View Mode
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span
+                                className="px-4 py-2 rounded-full text-sm font-medium text-white"
+                                style={{ backgroundColor: tag.color }}
+                              >
+                                {tag.name}
+                              </span>
+                              <span className="text-xs text-slate-500">{tag.color}</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => startTagEdit(tag)}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500 transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deleteTag(tag.id)}
+                                className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-500 transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-700/50 sticky bottom-0 bg-[#1e293b]">
+              <button
+                onClick={() => setShowTagModal(false)}
+                className="w-full px-4 py-2.5 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-600 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

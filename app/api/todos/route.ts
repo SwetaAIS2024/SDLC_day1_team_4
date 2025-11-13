@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { todoDB, CreateTodoInput, todoToResponse } from '@/lib/db';
+import { todoDB, CreateTodoInput, todoToResponse, todoTagDB } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const session = await getSession();
@@ -9,9 +9,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const todos = todoDB.getAll(session.userId);
-    const todosResponse = todos.map(todoToResponse);
-    return NextResponse.json(todosResponse);
+    const todos = todoDB.getAllWithSubtasks(session.userId);
+    return NextResponse.json(todos);
   } catch (error) {
     console.error('Error fetching todos:', error);
     return NextResponse.json({ error: 'Failed to fetch todos' }, { status: 500 });
@@ -64,9 +63,16 @@ export async function POST(request: NextRequest) {
     };
 
     const todo = todoDB.create(session.userId, input);
-    const todoResponse = todoToResponse(todo);
     
-    return NextResponse.json(todoResponse, { status: 201 });
+    // Handle tag associations
+    if (body.tag_ids && Array.isArray(body.tag_ids) && body.tag_ids.length > 0) {
+      todoTagDB.setTags(todo.id, body.tag_ids);
+    }
+    
+    // Return todo with subtasks and tags
+    const todoWithDetails = todoDB.getByIdWithSubtasks(session.userId, todo.id);
+    
+    return NextResponse.json(todoWithDetails, { status: 201 });
   } catch (error) {
     console.error('Error creating todo:', error);
     return NextResponse.json({ error: 'Failed to create todo' }, { status: 500 });

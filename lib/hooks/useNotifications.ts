@@ -9,13 +9,13 @@ export function useNotifications() {
   
   useEffect(() => {
     // Check initial permission state
-    if ('Notification' in window) {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
       setPermission(Notification.permission);
     }
   }, []);
   
   const requestPermission = useCallback(async () => {
-    if (!('Notification' in window)) {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
       alert('This browser does not support notifications');
       return false;
     }
@@ -93,6 +93,6 @@ export function useNotifications() {
     requestPermission,
     showNotification,
     startPolling,
-    isSupported: 'Notification' in window
+    isSupported: typeof window !== 'undefined' && 'Notification' in window
   };
 }

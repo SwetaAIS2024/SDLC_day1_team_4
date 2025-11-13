@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { todoDB, UpdateTodoInput, todoToResponse } from '@/lib/db';
+import { todoDB, UpdateTodoInput, todoToResponse, todoTagDB } from '@/lib/db';
 import { calculateNextDueDate } from '@/lib/timezone';
 
 export async function PUT(
@@ -71,6 +71,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }
 
+    // Handle tag updates
+    if (body.tag_ids !== undefined && Array.isArray(body.tag_ids)) {
+      todoTagDB.setTags(todoId, body.tag_ids);
+    }
+
     // If todo was just completed and has recurrence, create next instance
     if (
       input.completed === true && 
@@ -84,22 +89,30 @@ export async function PUT(
           currentTodo.recurrence_pattern
         );
         
+        // Get current tags to copy to next instance
+        const currentTagIds = todoTagDB.getTagIds(todoId);
+        
         // Create next instance with same properties
-        todoDB.create(session.userId, {
+        const nextTodo = todoDB.create(session.userId, {
           title: currentTodo.title,
           priority: currentTodo.priority,
           recurrence_pattern: currentTodo.recurrence_pattern,
           due_date: nextDueDate,
           reminder_minutes: currentTodo.reminder_minutes, // Inherit reminder
         });
+        
+        // Copy tags to next instance
+        if (currentTagIds.length > 0) {
+          todoTagDB.setTags(nextTodo.id, currentTagIds);
+        }
       } catch (error) {
         console.error('Error creating next recurring instance:', error);
         // Don't fail the completion if next instance creation fails
       }
     }
 
-    const todoResponse = todoToResponse(todo);
-    return NextResponse.json(todoResponse);
+    const todoWithSubtasks = todoDB.getByIdWithSubtasks(session.userId, todo.id);
+    return NextResponse.json(todoWithSubtasks);
   } catch (error) {
     console.error('Error updating todo:', error);
     return NextResponse.json({ error: 'Failed to update todo' }, { status: 500 });

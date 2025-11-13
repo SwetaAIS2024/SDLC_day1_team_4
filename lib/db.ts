@@ -38,6 +38,46 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_todos_recurrence ON todos(recurrence_pattern);
   CREATE INDEX IF NOT EXISTS idx_todos_user_due_date ON todos(user_id, due_date);
   CREATE INDEX IF NOT EXISTS idx_todos_reminders ON todos(user_id, due_date, reminder_minutes, last_notification_sent);
+
+  CREATE TABLE IF NOT EXISTS subtasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id INTEGER NOT NULL,
+    title TEXT NOT NULL CHECK(length(title) <= 200),
+    completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1)),
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (todo_id) REFERENCES todos(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_subtasks_todo_id ON subtasks(todo_id);
+  CREATE INDEX IF NOT EXISTS idx_subtasks_position ON subtasks(todo_id, position);
+
+  CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL CHECK(length(name) <= 50 AND length(name) > 0),
+    color TEXT NOT NULL DEFAULT '#3B82F6' CHECK(color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, name COLLATE NOCASE)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
+  CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(user_id, name COLLATE NOCASE);
+
+  CREATE TABLE IF NOT EXISTS todo_tags (
+    todo_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (todo_id, tag_id),
+    FOREIGN KEY (todo_id) REFERENCES todos(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_todo_tags_todo_id ON todo_tags(todo_id);
+  CREATE INDEX IF NOT EXISTS idx_todo_tags_tag_id ON todo_tags(tag_id);
 `);
 
 // Add priority column to existing tables (migration)
@@ -94,6 +134,33 @@ try {
 export type { Priority, RecurrencePattern, ReminderMinutes, NotificationPayload } from './types';
 
 // TypeScript Interfaces
+export interface Tag {
+  id: number;
+  user_id: number;
+  name: string;
+  color: string; // Hex format: #RRGGBB
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TagResponse {
+  id: number;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Subtask {
+  id: number;
+  todo_id: number;
+  title: string;
+  completed: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Todo {
   id: number;
   user_id: number;
@@ -124,6 +191,12 @@ export interface UpdateTodoInput {
   due_date?: string | null;
   reminder_minutes?: ReminderMinutes;
   last_notification_sent?: string | null;
+}
+
+export interface TodoWithSubtasks extends Todo {
+  subtasks: Subtask[];
+  progress: number; // 0-100 percentage
+  tags?: TagResponse[];
 }
 
 export interface TodoResponse {
@@ -180,6 +253,26 @@ export function todoToResponse(todo: Todo): TodoResponse {
     created_at: todo.created_at,
     updated_at: todo.updated_at,
   };
+}
+
+// Helper function to convert database row to Subtask object
+function rowToSubtask(row: any): Subtask {
+  return {
+    id: row.id,
+    todo_id: row.todo_id,
+    title: row.title,
+    completed: row.completed === 1,
+    position: row.position,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+// Calculate progress percentage for a todo based on its subtasks
+function calculateProgress(subtasks: Subtask[]): number {
+  if (subtasks.length === 0) return 0;
+  const completed = subtasks.filter(s => s.completed).length;
+  return Math.round((completed / subtasks.length) * 100);
 }
 
 // Todo CRUD Operations
@@ -353,7 +446,385 @@ export const todoDB = {
     `);
     const result = stmt.run(id);
     return result.changes > 0;
+  },
+
+  // Get todos with subtasks
+  getAllWithSubtasks: (userId: number): TodoWithSubtasks[] => {
+    const todos = todoDB.getAll(userId);
+    return todos.map(todo => {
+      const subtasks = subtaskDB.getByTodoId(todo.id);
+      const tags = tagDB.getByTodoId(todo.id);
+      return {
+        ...todo,
+        subtasks,
+        tags,
+        progress: calculateProgress(subtasks),
+      };
+    });
+  },
+
+  // Get a single todo with subtasks
+  getByIdWithSubtasks: (userId: number, todoId: number): TodoWithSubtasks | null => {
+    const todo = todoDB.getById(userId, todoId);
+    if (!todo) return null;
+    
+    const subtasks = subtaskDB.getByTodoId(todoId);
+    const tags = tagDB.getByTodoId(todoId);
+    return {
+      ...todo,
+      subtasks,
+      tags,
+      progress: calculateProgress(subtasks),
+    };
   }
+};
+
+// Subtask CRUD Operations
+export const subtaskDB = {
+  // Create a new subtask
+  create: (todoId: number, title: string, position?: number): Subtask => {
+    const now = getSingaporeNow().toISO();
+    
+    // If position not provided, get the max position and add 1
+    if (position === undefined) {
+      const maxPosStmt = db.prepare(`
+        SELECT COALESCE(MAX(position), -1) as max_position
+        FROM subtasks
+        WHERE todo_id = ?
+      `);
+      const result = maxPosStmt.get(todoId) as any;
+      position = result.max_position + 1;
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO subtasks (todo_id, title, position, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const insertResult = stmt.run(todoId, title, position, now, now);
+    return subtaskDB.getById(insertResult.lastInsertRowid as number)!;
+  },
+
+  // Get all subtasks for a todo
+  getByTodoId: (todoId: number): Subtask[] => {
+    const stmt = db.prepare(`
+      SELECT * FROM subtasks
+      WHERE todo_id = ?
+      ORDER BY position ASC, created_at ASC
+    `);
+    const rows = stmt.all(todoId);
+    return rows.map(rowToSubtask);
+  },
+
+  // Get a single subtask by ID
+  getById: (subtaskId: number): Subtask | null => {
+    const stmt = db.prepare(`SELECT * FROM subtasks WHERE id = ?`);
+    const row = stmt.get(subtaskId);
+    return row ? rowToSubtask(row) : null;
+  },
+
+  // Update a subtask
+  update: (subtaskId: number, updates: { title?: string; completed?: boolean; position?: number }): Subtask | null => {
+    const subtask = subtaskDB.getById(subtaskId);
+    if (!subtask) return null;
+
+    const updateFields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.title !== undefined) {
+      updateFields.push('title = ?');
+      values.push(updates.title);
+    }
+
+    if (updates.completed !== undefined) {
+      updateFields.push('completed = ?');
+      values.push(updates.completed ? 1 : 0);
+    }
+
+    if (updates.position !== undefined) {
+      updateFields.push('position = ?');
+      values.push(updates.position);
+    }
+
+    if (updateFields.length === 0) return subtask;
+
+    const now = getSingaporeNow().toISO();
+    updateFields.push('updated_at = ?');
+    values.push(now);
+
+    values.push(subtaskId);
+
+    const stmt = db.prepare(`
+      UPDATE subtasks
+      SET ${updateFields.join(', ')}
+      WHERE id = ?
+    `);
+    stmt.run(...values);
+
+    return subtaskDB.getById(subtaskId);
+  },
+
+  // Delete a subtask
+  delete: (subtaskId: number): boolean => {
+    const stmt = db.prepare(`DELETE FROM subtasks WHERE id = ?`);
+    const result = stmt.run(subtaskId);
+    return result.changes > 0;
+  },
+
+  // Delete all subtasks for a todo (called automatically by CASCADE)
+  deleteByTodoId: (todoId: number): boolean => {
+    const stmt = db.prepare(`DELETE FROM subtasks WHERE todo_id = ?`);
+    const result = stmt.run(todoId);
+    return result.changes > 0;
+  },
+
+  // Get count of subtasks for a todo
+  getCount: (todoId: number): number => {
+    const stmt = db.prepare(`
+      SELECT COUNT(*) as count FROM subtasks WHERE todo_id = ?
+    `);
+    const result = stmt.get(todoId) as any;
+    return result.count;
+  },
+
+  // Get count of completed subtasks for a todo
+  getCompletedCount: (todoId: number): number => {
+    const stmt = db.prepare(`
+      SELECT COUNT(*) as count FROM subtasks WHERE todo_id = ? AND completed = 1
+    `);
+    const result = stmt.get(todoId) as any;
+    return result.count;
+  }
+};
+
+// Helper function to convert database row to Tag object
+function rowToTag(row: any): Tag {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    name: row.name,
+    color: row.color,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+// Helper function to convert Tag to TagResponse (exclude user_id)
+function tagToResponse(tag: Tag): TagResponse {
+  return {
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+    created_at: tag.created_at,
+    updated_at: tag.updated_at,
+  };
+}
+
+// Tag CRUD Operations
+export const tagDB = {
+  // Create a new tag
+  create: (userId: number, name: string, color: string = '#3B82F6'): Tag => {
+    const now = getSingaporeNow().toISO();
+    const stmt = db.prepare(`
+      INSERT INTO tags (user_id, name, color, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const result = stmt.run(userId, name.trim(), color, now, now);
+    return tagDB.getById(userId, result.lastInsertRowid as number)!;
+  },
+
+  // Get all tags for a user
+  getAll: (userId: number): Tag[] => {
+    const stmt = db.prepare(`
+      SELECT * FROM tags
+      WHERE user_id = ?
+      ORDER BY created_at ASC
+    `);
+    const rows = stmt.all(userId);
+    return rows.map(rowToTag);
+  },
+
+  // Get a single tag by ID
+  getById: (userId: number, tagId: number): Tag | null => {
+    const stmt = db.prepare(`
+      SELECT * FROM tags
+      WHERE id = ? AND user_id = ?
+    `);
+    const row = stmt.get(tagId, userId);
+    return row ? rowToTag(row) : null;
+  },
+
+  // Update a tag
+  update: (userId: number, tagId: number, updates: { name?: string; color?: string }): Tag | null => {
+    const tag = tagDB.getById(userId, tagId);
+    if (!tag) return null;
+
+    const updateFields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.name !== undefined) {
+      updateFields.push('name = ?');
+      values.push(updates.name.trim());
+    }
+
+    if (updates.color !== undefined) {
+      updateFields.push('color = ?');
+      values.push(updates.color);
+    }
+
+    if (updateFields.length === 0) return tag;
+
+    const now = getSingaporeNow().toISO();
+    updateFields.push('updated_at = ?');
+    values.push(now);
+
+    values.push(tagId);
+    values.push(userId);
+
+    const stmt = db.prepare(`
+      UPDATE tags
+      SET ${updateFields.join(', ')}
+      WHERE id = ? AND user_id = ?
+    `);
+    stmt.run(...values);
+
+    return tagDB.getById(userId, tagId);
+  },
+
+  // Delete a tag (CASCADE removes from todo_tags)
+  delete: (userId: number, tagId: number): boolean => {
+    const stmt = db.prepare(`
+      DELETE FROM tags
+      WHERE id = ? AND user_id = ?
+    `);
+    const result = stmt.run(tagId, userId);
+    return result.changes > 0;
+  },
+
+  // Check if tag name already exists for user (case-insensitive)
+  existsByName: (userId: number, name: string, excludeId?: number): boolean => {
+    let stmt;
+    let result;
+    
+    if (excludeId) {
+      stmt = db.prepare(`
+        SELECT COUNT(*) as count FROM tags 
+        WHERE user_id = ? AND LOWER(name) = LOWER(?) AND id != ?
+      `);
+      result = stmt.get(userId, name.trim(), excludeId) as any;
+    } else {
+      stmt = db.prepare(`
+        SELECT COUNT(*) as count FROM tags 
+        WHERE user_id = ? AND LOWER(name) = LOWER(?)
+      `);
+      result = stmt.get(userId, name.trim()) as any;
+    }
+    
+    return result.count > 0;
+  },
+
+  // Get tags for a specific todo
+  getByTodoId: (todoId: number): TagResponse[] => {
+    const stmt = db.prepare(`
+      SELECT t.id, t.name, t.color, t.created_at, t.updated_at
+      FROM tags t
+      INNER JOIN todo_tags tt ON t.id = tt.tag_id
+      WHERE tt.todo_id = ?
+      ORDER BY t.created_at ASC
+    `);
+    const rows = stmt.all(todoId);
+    return rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
+  },
+
+  // Get count of todos using a tag
+  getTodoCount: (tagId: number): number => {
+    const stmt = db.prepare(`
+      SELECT COUNT(*) as count FROM todo_tags WHERE tag_id = ?
+    `);
+    const result = stmt.get(tagId) as any;
+    return result.count;
+  },
+};
+
+// Todo-Tag Association Operations
+export const todoTagDB = {
+  // Add a tag to a todo
+  add: (todoId: number, tagId: number): boolean => {
+    const now = getSingaporeNow().toISO();
+    try {
+      const stmt = db.prepare(`
+        INSERT INTO todo_tags (todo_id, tag_id, created_at)
+        VALUES (?, ?, ?)
+      `);
+      stmt.run(todoId, tagId, now);
+      return true;
+    } catch (e: any) {
+      // Already exists or constraint violation
+      return false;
+    }
+  },
+
+  // Remove a tag from a todo
+  remove: (todoId: number, tagId: number): boolean => {
+    const stmt = db.prepare(`
+      DELETE FROM todo_tags
+      WHERE todo_id = ? AND tag_id = ?
+    `);
+    const result = stmt.run(todoId, tagId);
+    return result.changes > 0;
+  },
+
+  // Remove all tags from a todo
+  removeAll: (todoId: number): boolean => {
+    const stmt = db.prepare(`
+      DELETE FROM todo_tags
+      WHERE todo_id = ?
+    `);
+    const result = stmt.run(todoId);
+    return result.changes > 0;
+  },
+
+  // Set tags for a todo (replace all existing tags)
+  setTags: (todoId: number, tagIds: number[]): boolean => {
+    // Use a transaction to ensure atomicity
+    const removeStmt = db.prepare(`DELETE FROM todo_tags WHERE todo_id = ?`);
+    const insertStmt = db.prepare(`
+      INSERT INTO todo_tags (todo_id, tag_id, created_at)
+      VALUES (?, ?, ?)
+    `);
+
+    try {
+      db.transaction(() => {
+        // Remove all existing tags
+        removeStmt.run(todoId);
+        
+        // Add new tags
+        const now = getSingaporeNow().toISO();
+        for (const tagId of tagIds) {
+          insertStmt.run(todoId, tagId, now);
+        }
+      })();
+      
+      return true;
+    } catch (e) {
+      console.error('Error setting tags:', e);
+      return false;
+    }
+  },
+
+  // Get all tag IDs for a todo
+  getTagIds: (todoId: number): number[] => {
+    const stmt = db.prepare(`
+      SELECT tag_id FROM todo_tags WHERE todo_id = ?
+    `);
+    const rows = stmt.all(todoId) as any[];
+    return rows.map(row => row.tag_id);
+  },
 };
 
 // User operations (basic for now)

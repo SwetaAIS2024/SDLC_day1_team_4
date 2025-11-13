@@ -1,7 +1,25 @@
 // Shared types for client and server
 export type Priority = 'high' | 'medium' | 'low';
 export type RecurrencePattern = 'daily' | 'weekly' | 'monthly' | 'yearly';
-export type ReminderMinutes = 15 | 30 | 60 | 120 | 1440 | 10080 | null;
+export type ReminderMinutes = 15 | 30 | 60 | 120 | 1440 | 2880 | 10080 | null;
+
+export interface TagResponse {
+  id: number;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Subtask {
+  id: number;
+  todo_id: number;
+  title: string;
+  completed: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Todo {
   id: number;
@@ -14,6 +32,12 @@ export interface Todo {
   last_notification_sent: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TodoWithSubtasks extends Todo {
+  subtasks: Subtask[];
+  progress: number; // 0-100 percentage
+  tags?: TagResponse[];
 }
 
 export interface NotificationPayload {
@@ -98,6 +122,12 @@ export const REMINDER_CONFIG = {
     shortLabel: '1d',
     minutes: 1440,
     description: 'Notify 1 day before due time'
+  },
+  2880: {
+    label: '2 days before',
+    shortLabel: '2d',
+    minutes: 2880,
+    description: 'Notify 2 days before due time'
   },
   10080: {
     label: '1 week before',

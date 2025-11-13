@@ -38,4 +38,6 @@ with following consistent structure
 - **Out of Scope** - Explicitly excluded features
 - **Success Metrics** - Measurable outcomes
 
+---
 
+you are a senior fullstack developer. Use this PRP 05-subtasks-progress.md to add feature for Subtasks & Progress Tracking on top of existing todo app, with reference to USER_GUIDE.md.
