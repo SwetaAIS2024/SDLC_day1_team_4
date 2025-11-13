@@ -3,6 +3,36 @@ import { getSession } from '@/lib/auth';
 import { todoDB, UpdateTodoInput, todoToResponse, todoTagDB } from '@/lib/db';
 import { calculateNextDueDate } from '@/lib/timezone';
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const todoId = parseInt(id, 10);
+
+  if (isNaN(todoId)) {
+    return NextResponse.json({ error: 'Invalid todo ID' }, { status: 400 });
+  }
+
+  try {
+    const todo = todoDB.getByIdWithSubtasks(session.userId, todoId);
+
+    if (!todo) {
+      return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
+    }
+
+    return NextResponse.json(todo);
+  } catch (error) {
+    console.error('Error fetching todo:', error);
+    return NextResponse.json({ error: 'Failed to fetch todo' }, { status: 500 });
+  }
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,9 +51,9 @@ export async function PUT(
 
   try {
     const body = await request.json();
-    
+
     const input: UpdateTodoInput = {};
-    
+
     if (body.title !== undefined) {
       if (typeof body.title !== 'string') {
         return NextResponse.json({ error: 'Title must be a string' }, { status: 400 });
@@ -66,7 +96,7 @@ export async function PUT(
 
     // Update the current todo
     const todo = todoDB.update(session.userId, todoId, input);
-    
+
     if (!todo) {
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }
@@ -78,20 +108,20 @@ export async function PUT(
 
     // If todo was just completed and has recurrence, create next instance
     if (
-      input.completed === true && 
-      !currentTodo.completed && 
-      currentTodo.recurrence_pattern && 
+      input.completed === true &&
+      !currentTodo.completed &&
+      currentTodo.recurrence_pattern &&
       currentTodo.due_date
     ) {
       try {
         const nextDueDate = calculateNextDueDate(
-          currentTodo.due_date, 
+          currentTodo.due_date,
           currentTodo.recurrence_pattern
         );
-        
+
         // Get current tags to copy to next instance
         const currentTagIds = todoTagDB.getTagIds(todoId);
-        
+
         // Create next instance with same properties
         const nextTodo = todoDB.create(session.userId, {
           title: currentTodo.title,
@@ -100,7 +130,7 @@ export async function PUT(
           due_date: nextDueDate,
           reminder_minutes: currentTodo.reminder_minutes, // Inherit reminder
         });
-        
+
         // Copy tags to next instance
         if (currentTagIds.length > 0) {
           todoTagDB.setTags(nextTodo.id, currentTagIds);
@@ -137,7 +167,7 @@ export async function DELETE(
 
   try {
     const deleted = todoDB.delete(session.userId, todoId);
-    
+
     if (!deleted) {
       return NextResponse.json({ error: 'Todo not found' }, { status: 404 });
     }

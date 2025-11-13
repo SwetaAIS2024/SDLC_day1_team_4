@@ -15,6 +15,22 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS authenticators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    credential_id TEXT NOT NULL UNIQUE,
+    credential_public_key TEXT NOT NULL,
+    counter INTEGER NOT NULL DEFAULT 0,
+    credential_device_type TEXT NOT NULL,
+    credential_backed_up INTEGER NOT NULL DEFAULT 0,
+    transports TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_authenticators_user_id ON authenticators(user_id);
+  CREATE INDEX IF NOT EXISTS idx_authenticators_credential_id ON authenticators(credential_id);
+
   CREATE TABLE IF NOT EXISTS todos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -51,6 +67,58 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_subtasks_todo_id ON subtasks(todo_id);
+
+  CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL CHECK(length(name) <= 50),
+    color TEXT NOT NULL DEFAULT '#3B82F6',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, name)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
+
+  CREATE TABLE IF NOT EXISTS todo_tags (
+    todo_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (todo_id, tag_id),
+    FOREIGN KEY (todo_id) REFERENCES todos(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_todo_tags_todo_id ON todo_tags(todo_id);
+  CREATE INDEX IF NOT EXISTS idx_todo_tags_tag_id ON todo_tags(tag_id);
+
+  CREATE TABLE IF NOT EXISTS templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL CHECK(length(name) <= 100),
+    title TEXT NOT NULL CHECK(length(title) <= 500),
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('high', 'medium', 'low')),
+    due_date_offset_days INTEGER,
+    subtasks_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_templates_user_id ON templates(user_id);
+
+  CREATE TABLE IF NOT EXISTS holidays (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    is_recurring INTEGER NOT NULL DEFAULT 0,
+    is_public_holiday INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_holidays_date ON holidays(date);
+  CREATE INDEX IF NOT EXISTS idx_holidays_year ON holidays(year);
 `);
 
 // Migrations are handled inline - no separate migration needed as schema uses IF NOT EXISTS
@@ -110,6 +178,46 @@ try {
   if (!e.message?.includes('duplicate column name')) {
     console.warn('Warning during migration:', e.message);
   }
+}
+
+// Migration: Add updated_at column to tags table if it doesn't exist
+try {
+  db.exec(`ALTER TABLE tags ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))`);
+  console.log('✓ Added updated_at column to tags table');
+} catch (e: any) {
+  // Column already exists or other error - ignore
+  if (!e.message?.includes('duplicate column name')) {
+    console.warn('Warning during migration:', e.message);
+  }
+}
+
+// Migration: Add year and is_recurring columns to holidays table if they don't exist
+try {
+  db.exec(`ALTER TABLE holidays ADD COLUMN year INTEGER`);
+  console.log('✓ Added year column to holidays table');
+} catch (e: any) {
+  // Column already exists or other error - ignore
+  if (!e.message?.includes('duplicate column name')) {
+    console.warn('Warning during migration:', e.message);
+  }
+}
+
+try {
+  db.exec(`ALTER TABLE holidays ADD COLUMN is_recurring INTEGER NOT NULL DEFAULT 0`);
+  console.log('✓ Added is_recurring column to holidays table');
+} catch (e: any) {
+  // Column already exists or other error - ignore
+  if (!e.message?.includes('duplicate column name')) {
+    console.warn('Warning during migration:', e.message);
+  }
+}
+
+// Update year values from date if NULL
+try {
+  db.exec(`UPDATE holidays SET year = CAST(substr(date, 1, 4) AS INTEGER) WHERE year IS NULL`);
+  console.log('✓ Updated year values in holidays table');
+} catch (e: any) {
+  console.warn('Warning during year update:', e.message);
 }
 
 // Update any NULL priorities to 'medium' (for safety)
@@ -299,13 +407,13 @@ export const todoDB = {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
-      userId, 
-      input.title, 
-      priority, 
-      input.recurrence_pattern || null, 
+      userId,
+      input.title,
+      priority,
+      input.recurrence_pattern || null,
       input.due_date || null,
-      input.reminder_minutes || null, 
-      now, 
+      input.reminder_minutes || null,
+      now,
       now
     );
     return todoDB.getById(userId, result.lastInsertRowid as number)!;
@@ -480,7 +588,7 @@ export const todoDB = {
   getByIdWithSubtasks: (userId: number, todoId: number): TodoWithSubtasks | null => {
     const todo = todoDB.getById(userId, todoId);
     if (!todo) return null;
-    
+
     const subtasks = subtaskDB.getByTodoId(todoId);
     const tags = tagDB.getByTodoId(todoId);
     return {
@@ -503,7 +611,7 @@ export const todoDB = {
     `);
     const rows = stmt.all(userId, startDate, endDate);
     const todos = rows.map(rowToTodo);
-    
+
     // Add subtasks and tags to each todo
     return todos.map(todo => {
       const subtasks = subtaskDB.getByTodoId(todo.id);
@@ -515,6 +623,24 @@ export const todoDB = {
         progress: calculateProgress(subtasks),
       };
     });
+  },
+
+  // Get count of todos by priority
+  getCountByPriority: (userId: number): { high: number; medium: number; low: number } => {
+    const stmt = db.prepare(`
+      SELECT priority, COUNT(*) as count
+      FROM todos
+      WHERE user_id = ? AND completed = 0
+      GROUP BY priority
+    `);
+    const rows = stmt.all(userId) as Array<{ priority: Priority; count: number }>;
+
+    const counts = { high: 0, medium: 0, low: 0 };
+    rows.forEach(row => {
+      counts[row.priority] = row.count;
+    });
+
+    return counts;
   }
 };
 
@@ -523,7 +649,7 @@ export const subtaskDB = {
   // Create a new subtask
   create: (todoId: number, title: string, position?: number): Subtask => {
     const now = getSingaporeNow().toISO();
-    
+
     // If position not provided, get the max position and add 1
     if (position === undefined) {
       const maxPosStmt = db.prepare(`
@@ -743,7 +869,7 @@ export const tagDB = {
   existsByName: (userId: number, name: string, excludeId?: number): boolean => {
     let stmt;
     let result;
-    
+
     if (excludeId) {
       stmt = db.prepare(`
         SELECT COUNT(*) as count FROM tags 
@@ -757,7 +883,7 @@ export const tagDB = {
       `);
       result = stmt.get(userId, name.trim()) as any;
     }
-    
+
     return result.count > 0;
   },
 
@@ -841,14 +967,14 @@ export const todoTagDB = {
       db.transaction(() => {
         // Remove all existing tags
         removeStmt.run(todoId);
-        
+
         // Add new tags
         const now = getSingaporeNow().toISO();
         for (const tagId of tagIds) {
           insertStmt.run(todoId, tagId, now);
         }
       })();
-      
+
       return true;
     } catch (e) {
       console.error('Error setting tags:', e);
@@ -893,7 +1019,7 @@ export const templateDB = {
        reminder_minutes, due_date_offset_days, subtasks_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    
+
     const now = getSingaporeNow().toISO();
     const result = stmt.run(
       template.user_id,
@@ -906,7 +1032,7 @@ export const templateDB = {
       template.due_date_offset_days,
       template.subtasks_json
     );
-    
+
     return templateDB.getById(template.user_id, Number(result.lastInsertRowid));
   },
 
@@ -938,7 +1064,7 @@ export const templateDB = {
       const rows = stmt.all(userId, category) as any[];
       return rows.map(templateDB.rowToTemplate);
     }
-    
+
     const stmt = db.prepare('SELECT * FROM templates WHERE user_id = ? ORDER BY created_at DESC');
     const rows = stmt.all(userId) as any[];
     return rows.map(templateDB.rowToTemplate);
@@ -957,21 +1083,21 @@ export const templateDB = {
   update: (userId: number, templateId: number, updates: Partial<Template>): Template | null => {
     // Filter out fields that shouldn't be updated
     const allowedFields = [
-      'name', 'description', 'category', 'priority', 
+      'name', 'description', 'category', 'priority',
       'recurrence_pattern', 'reminder_minutes', 'due_date_offset_days', 'subtasks_json'
     ];
     const fields = Object.keys(updates).filter(k => allowedFields.includes(k));
-    
+
     if (fields.length === 0) {
       return templateDB.getById(userId, templateId);
     }
 
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     const values = fields.map(f => (updates as any)[f]);
-    
+
     const stmt = db.prepare(`UPDATE templates SET ${setClause} WHERE id = ? AND user_id = ?`);
     stmt.run(...values, templateId, userId);
-    
+
     return templateDB.getById(userId, templateId);
   },
 
@@ -1023,14 +1149,14 @@ export const templateDB = {
       db.transaction(() => {
         // Remove all existing tags
         removeStmt.run(templateId);
-        
+
         // Add new tags
         const now = getSingaporeNow().toISO();
         for (const tagId of tagIds) {
           insertStmt.run(templateId, tagId, now);
         }
       })();
-      
+
       return true;
     } catch (e) {
       console.error('Error setting template tags:', e);
@@ -1106,7 +1232,7 @@ export const holidayDB = {
     `);
     const row = stmt.get(date, year) as any;
     if (!row) return null;
-    
+
     return {
       id: row.id,
       name: row.name,

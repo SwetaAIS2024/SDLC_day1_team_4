@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    
+
     // Validate input
     if (!body.title || typeof body.title !== 'string') {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
@@ -42,15 +42,15 @@ export async function POST(request: NextRequest) {
 
     // Validate recurrence pattern requires due date
     if (body.recurrence_pattern && !body.due_date) {
-      return NextResponse.json({ 
-        error: 'Due date is required for recurring todos' 
+      return NextResponse.json({
+        error: 'Due date is required for recurring todos'
       }, { status: 400 });
     }
 
     // Validate reminder requires due date
     if (body.reminder_minutes && !body.due_date) {
-      return NextResponse.json({ 
-        error: 'Due date is required for reminders' 
+      return NextResponse.json({
+        error: 'Due date is required for reminders'
       }, { status: 400 });
     }
 
@@ -63,18 +63,26 @@ export async function POST(request: NextRequest) {
     };
 
     const todo = todoDB.create(session.userId, input);
-    
+
     // Handle tag associations
     if (body.tag_ids && Array.isArray(body.tag_ids) && body.tag_ids.length > 0) {
       todoTagDB.setTags(todo.id, body.tag_ids);
     }
-    
+
     // Return todo with subtasks and tags
     const todoWithDetails = todoDB.getByIdWithSubtasks(session.userId, todo.id);
-    
+
     return NextResponse.json(todoWithDetails, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating todo:', error);
+
+    // Check if it's a foreign key constraint error
+    if (error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      return NextResponse.json({
+        error: 'Session expired. Please log out and log back in.'
+      }, { status: 401 });
+    }
+
     return NextResponse.json({ error: 'Failed to create todo' }, { status: 500 });
   }
 }

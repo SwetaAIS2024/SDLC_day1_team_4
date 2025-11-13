@@ -48,7 +48,7 @@ const holidays: Holiday[] = [
   { name: 'Good Friday', date: '2026-04-03', year: 2026, is_recurring: 0 },
   { name: 'Hari Raya Puasa', date: '2026-03-20', year: 2026, is_recurring: 0 },
   { name: 'Labour Day', date: '2026-05-01', year: 2026, is_recurring: 1 },
-  { name: 'Vesak Day', date: '2026-05-01', year: 2026, is_recurring: 0 },
+  { name: 'Vesak Day', date: '2026-05-31', year: 2026, is_recurring: 0 },
   { name: 'Hari Raya Haji', date: '2026-05-27', year: 2026, is_recurring: 0 },
   { name: 'National Day', date: '2026-08-09', year: 2026, is_recurring: 1 },
   { name: 'Deepavali', date: '2026-11-08', year: 2026, is_recurring: 0 },
