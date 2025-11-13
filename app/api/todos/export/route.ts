@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     if (includeTodos) {
       const todosQuery = includeCompleted
         ? `SELECT * FROM todos WHERE user_id = ? ORDER BY id`
-        : `SELECT * FROM todos WHERE user_id = ? AND completed = 0 ORDER BY id`;
+        : `SELECT * FROM todos WHERE user_id = ? AND completed_at IS NULL ORDER BY id`;
       
       const todos = db.prepare(todosQuery).all(session.userId) as any[];
 
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         const exportedTodo: ExportedTodo = {
           original_id: todo.id,
           title: todo.title,
-          completed: Boolean(todo.completed),
+          completed: todo.completed_at !== null,
           priority: todo.priority,
           recurrence_pattern: todo.recurrence_pattern || null,
           due_date: todo.due_date,

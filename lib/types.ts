@@ -24,7 +24,7 @@ export interface Subtask {
 export interface Todo {
   id: number;
   title: string;
-  completed: boolean;
+  completed_at: string | null;
   priority: Priority;
   recurrence_pattern: RecurrencePattern | null;
   due_date: string | null;
@@ -339,4 +339,9 @@ export interface CalendarData {
   firstDayOfWeek: number; // 0-6 (Sunday-Saturday)
   todos: TodoWithSubtasks[];
   holidays: Holiday[];
+}
+
+// Helper function to check if a todo is completed
+export function isCompleted(todo: Todo | TodoWithSubtasks): boolean {
+  return todo.completed_at !== null;
 }

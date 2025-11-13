@@ -19,7 +19,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     title TEXT NOT NULL CHECK(length(title) <= 500),
-    completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1)),
+    completed_at TEXT,
     priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('high', 'medium', 'low')),
     due_date TEXT,
     recurrence_pattern TEXT CHECK(recurrence_pattern IN ('daily', 'weekly', 'monthly', 'yearly')),
@@ -32,9 +32,9 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_todos_user_id ON todos(user_id);
   CREATE INDEX IF NOT EXISTS idx_todos_due_date ON todos(due_date);
-  CREATE INDEX IF NOT EXISTS idx_todos_completed ON todos(completed);
+  CREATE INDEX IF NOT EXISTS idx_todos_completed_at ON todos(completed_at);
   CREATE INDEX IF NOT EXISTS idx_todos_priority ON todos(priority);
-  CREATE INDEX IF NOT EXISTS idx_todos_user_priority ON todos(user_id, priority, completed);
+  CREATE INDEX IF NOT EXISTS idx_todos_user_priority ON todos(user_id, priority, completed_at);
   CREATE INDEX IF NOT EXISTS idx_todos_recurrence ON todos(recurrence_pattern);
   CREATE INDEX IF NOT EXISTS idx_todos_user_due_date ON todos(user_id, due_date);
   CREATE INDEX IF NOT EXISTS idx_todos_reminders ON todos(user_id, due_date, reminder_minutes, last_notification_sent);
@@ -154,7 +154,7 @@ export interface Todo {
   id: number;
   user_id: number;
   title: string;
-  completed: boolean;
+  completed_at: string | null;
   priority: Priority;
   recurrence_pattern: RecurrencePattern | null;
   due_date: string | null;
@@ -174,7 +174,7 @@ export interface CreateTodoInput {
 
 export interface UpdateTodoInput {
   title?: string;
-  completed?: boolean;
+  completed_at?: string | null;
   priority?: Priority;
   recurrence_pattern?: RecurrencePattern | null;
   due_date?: string | null;
@@ -215,22 +215,12 @@ export interface TemplateSubtask {
 export interface TodoResponse {
   id: number;
   title: string;
-  completed: boolean;
+  completed_at: string | null;
   priority: Priority;
   recurrence_pattern: RecurrencePattern | null;
   due_date: string | null;
   reminder_minutes: ReminderMinutes;
   last_notification_sent: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TodoResponse {
-  id: number;
-  title: string;
-  completed: boolean;
-  priority: Priority;
-  due_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -241,7 +231,7 @@ function rowToTodo(row: any): Todo {
     id: row.id,
     user_id: row.user_id,
     title: row.title,
-    completed: row.completed === 1,
+    completed_at: row.completed_at,
     priority: row.priority as Priority,
     recurrence_pattern: row.recurrence_pattern as RecurrencePattern | null,
     due_date: row.due_date,
@@ -257,7 +247,7 @@ export function todoToResponse(todo: Todo): TodoResponse {
   return {
     id: todo.id,
     title: todo.title,
-    completed: todo.completed,
+    completed_at: todo.completed_at,
     priority: todo.priority,
     recurrence_pattern: todo.recurrence_pattern,
     due_date: todo.due_date,
@@ -345,9 +335,9 @@ export const todoDB = {
       values.push(input.title);
     }
 
-    if (input.completed !== undefined) {
-      updates.push('completed = ?');
-      values.push(input.completed ? 1 : 0);
+    if (input.completed_at !== undefined) {
+      updates.push('completed_at = ?');
+      values.push(input.completed_at);
     }
 
     if (input.priority !== undefined) {
@@ -417,7 +407,7 @@ export const todoDB = {
     const stmt = db.prepare(`
       SELECT * FROM todos 
       WHERE user_id = ? 
-        AND completed = 0
+        AND completed_at IS NULL
         AND due_date IS NOT NULL
         AND reminder_minutes IS NOT NULL
         AND last_notification_sent IS NULL
@@ -515,6 +505,31 @@ export const todoDB = {
         progress: calculateProgress(subtasks),
       };
     });
+  },
+
+  // Get count of todos by priority (only incomplete todos)
+  getCountByPriority: (userId: number): Record<Priority, number> => {
+    const stmt = db.prepare(`
+      SELECT priority, COUNT(*) as count
+      FROM todos
+      WHERE user_id = ? AND completed_at IS NULL
+      GROUP BY priority
+    `);
+    const rows = stmt.all(userId) as Array<{ priority: Priority; count: number }>;
+    
+    // Initialize counts for all priorities
+    const counts: Record<Priority, number> = {
+      high: 0,
+      medium: 0,
+      low: 0,
+    };
+    
+    // Fill in actual counts
+    rows.forEach(row => {
+      counts[row.priority] = row.count;
+    });
+    
+    return counts;
   }
 };
 

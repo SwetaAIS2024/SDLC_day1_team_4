@@ -39,7 +39,9 @@ export async function PUT(
     }
 
     if (body.completed !== undefined) {
-      input.completed = Boolean(body.completed);
+      // Convert boolean to timestamp (completed) or null (not completed)
+      const { getSingaporeNow } = await import('@/lib/timezone');
+      input.completed_at = Boolean(body.completed) ? getSingaporeNow().toISO() : null;
     }
 
     if (body.priority !== undefined) {
@@ -78,8 +80,9 @@ export async function PUT(
 
     // If todo was just completed and has recurrence, create next instance
     if (
-      input.completed === true && 
-      !currentTodo.completed && 
+      input.completed_at !== undefined &&
+      input.completed_at !== null && 
+      currentTodo.completed_at === null && 
       currentTodo.recurrence_pattern && 
       currentTodo.due_date
     ) {
